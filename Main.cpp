@@ -4,23 +4,22 @@
 enum Block {BarBlock, BoxBlock, TBlock, LBlock, JBlock, ZBlock, SBlock};
 enum Orientation {Up, Right, Down, Left};
 
-const int BOARD_WIDTH = 300;
-const int BOARD_HEIGHT = 600;
-const int ROWS = 20;
-const int COLS = 10;
-const int CELL_WIDTH = BOARD_WIDTH / COLS;
-const int CELL_HEIGHT = BOARD_HEIGHT / ROWS;
-const int INFO_AREA_WIDTH = 250;
+constexpr int BOARD_WIDTH = 300;
+constexpr int BOARD_HEIGHT = 600;
+constexpr int ROWS = 20;
+constexpr int COLS = 10;
+constexpr int CELL_WIDTH = BOARD_WIDTH / COLS;
+constexpr int CELL_HEIGHT = BOARD_HEIGHT / ROWS;
+constexpr int INFO_AREA_WIDTH = 250;
 
-const int EMPTY_CELL = 0;
-const int KICK_TRIES = 6;
-const int WALL_KICKS[KICK_TRIES][2] = {
+constexpr int EMPTY_CELL = 0;
+constexpr int KICK_TRIES = 6;
+constexpr int WALL_KICKS[KICK_TRIES][2] = {
     {-1, 0}, {1, 0}, {-2, 0}, {2, 0}, {0, -1}, {0, 1}
 };
 
 const Color WINDOW_BG_COLOR = RAYWHITE;
 const Color GRID_LINE_COLOR = LIGHTGRAY;
-
 const Color BLOCK_COLORS[7] = {
     SKYBLUE, GOLD, VIOLET, ORANGE, BLUE, RED, GREEN
 };
@@ -86,20 +85,22 @@ struct ActiveBlock {
     Color color;
 };
 
-int cellInfo[ROWS][COLS];
-int score = 0;
-int clearedLinesTotal = 0;
-int level = 1;
-bool gameOver = false;
-float fallDelay = 0.0f;
-Block nextBlock = BarBlock;
+struct GameState {
+    int cellInfo[ROWS][COLS];
+    int score;
+    int clearedLinesTotal;
+    int level;
+    bool gameOver;
+    float fallDelay;
+    Block nextBlock;
+};
 
 void init();
-void initCells();
-void playGame(ActiveBlock &activeBlock);
+void initCells(GameState &state);
+void finishActivePiece(GameState &state, ActiveBlock &activeBlock);
+void playGame(GameState &state, ActiveBlock &activeBlock);
 
-namespace GameLogic {
-void resetGame(ActiveBlock &activeBlock);
+namespace Piece {
 int blockCellX(Block block, Orientation orientation, int index);
 int blockCellY(Block block, Orientation orientation, int index);
 Color getBlockColor(Block block);
@@ -107,46 +108,52 @@ const char *getBlockName(Block block);
 Block chooseRandomBlock();
 Orientation chooseRandomOrientation(Block block);
 int findMiddle(Block block, Orientation orientation);
-bool canPlace(Block block, Orientation orientation, int x, int y);
-void spawnBlock(ActiveBlock &activeBlock);
-void lockActiveBlock(const ActiveBlock &activeBlock);
-int clearCompletedLines();
-void applyLineClearScore(int linesCleared);
-float getCurrentFallDelay();
-void finishActivePiece(ActiveBlock &activeBlock);
-}
+} // namespace Piece
+
+namespace Board {
+void resetGame(GameState &state, ActiveBlock &activeBlock);
+bool canPlace(const GameState &state, Block block, Orientation orientation, int x, int y);
+void spawnBlock(GameState &state, ActiveBlock &activeBlock);
+void lockActiveBlock(GameState &state, const ActiveBlock &activeBlock);
+int clearCompletedLines(GameState &state);
+} // namespace Board
+
+namespace Rules {
+void applyLineClearScore(GameState &state, int linesCleared);
+float getCurrentFallDelay(const GameState &state);
+} // namespace Rules
 
 namespace Rendering {
 void drawGrid();
-void drawLockedCells();
+void drawLockedCells(const GameState &state);
 void drawActiveBlock(const ActiveBlock &activeBlock);
-void drawInfoPanel();
 void drawNextBlockPreview(Block block, int originX, int originY);
+void drawInfoPanel(const GameState &state);
 void drawGameOverOverlay();
-}
+} // namespace Rendering
 
 namespace Movement {
-bool canBlockGoDown(const ActiveBlock &activeBlock);
-bool canBlockGoLeft(const ActiveBlock &activeBlock);
-bool canBlockGoRight(const ActiveBlock &activeBlock);
-bool canBlockRotate(const ActiveBlock &activeBlock);
-void rotateBlock(ActiveBlock &activeBlock);
-}
+bool canBlockGoDown(const GameState &state, const ActiveBlock &activeBlock);
+bool canBlockGoLeft(const GameState &state, const ActiveBlock &activeBlock);
+bool canBlockGoRight(const GameState &state, const ActiveBlock &activeBlock);
+bool canBlockRotate(const GameState &state, const ActiveBlock &activeBlock);
+void rotateBlock(const GameState &state, ActiveBlock &activeBlock);
+} // namespace Movement
 
 int main(){
     init();
-    initCells();
 
+    GameState state;
     ActiveBlock activeBlock;
-    GameLogic::resetGame(activeBlock);
+    Board::resetGame(state, activeBlock);
 
     while(!WindowShouldClose()){
         BeginDrawing();
             ClearBackground(WINDOW_BG_COLOR);
-            playGame(activeBlock);
+            playGame(state, activeBlock);
             Rendering::drawGrid();
-            Rendering::drawInfoPanel();
-            if(gameOver){
+            Rendering::drawInfoPanel(state);
+            if(state.gameOver){
                 Rendering::drawGameOverOverlay();
             }
         EndDrawing();
@@ -161,26 +168,15 @@ void init(){
     SetTargetFPS(60);
 }
 
-void initCells(){
+void initCells(GameState &state){
     for(int row = 0; row < ROWS; row++){
         for(int col = 0; col < COLS; col++){
-            cellInfo[row][col] = EMPTY_CELL;
+            state.cellInfo[row][col] = EMPTY_CELL;
         }
     }
 }
 
-namespace GameLogic {
-
-void resetGame(ActiveBlock &activeBlock){
-    initCells();
-    score = 0;
-    clearedLinesTotal = 0;
-    level = 1;
-    gameOver = false;
-    fallDelay = 0.0f;
-    nextBlock = chooseRandomBlock();
-    spawnBlock(activeBlock);
-}
+namespace Piece {
 
 int blockCellX(Block block, Orientation orientation, int index){
     return BLOCK_SHAPES[(int)block][(int)orientation][index][0];
@@ -232,16 +228,31 @@ int findMiddle(Block block, Orientation orientation){
     return (COLS - width) / 2 - minX;
 }
 
-bool canPlace(Block block, Orientation orientation, int x, int y){
+} // namespace Piece
+
+namespace Board {
+
+void resetGame(GameState &state, ActiveBlock &activeBlock){
+    initCells(state);
+    state.score = 0;
+    state.clearedLinesTotal = 0;
+    state.level = 1;
+    state.gameOver = false;
+    state.fallDelay = 0.0f;
+    state.nextBlock = Piece::chooseRandomBlock();
+    spawnBlock(state, activeBlock);
+}
+
+bool canPlace(const GameState &state, Block block, Orientation orientation, int x, int y){
     for(int i = 0; i < 4; i++){
-        int boardX = x + blockCellX(block, orientation, i);
-        int boardY = y + blockCellY(block, orientation, i);
+        int boardX = x + Piece::blockCellX(block, orientation, i);
+        int boardY = y + Piece::blockCellY(block, orientation, i);
 
         if(boardX < 0 || boardX >= COLS || boardY < 0 || boardY >= ROWS){
             return false;
         }
 
-        if(cellInfo[boardY][boardX] != EMPTY_CELL){
+        if(state.cellInfo[boardY][boardX] != EMPTY_CELL){
             return false;
         }
     }
@@ -249,37 +260,37 @@ bool canPlace(Block block, Orientation orientation, int x, int y){
     return true;
 }
 
-void spawnBlock(ActiveBlock &activeBlock){
-    activeBlock.block = nextBlock;
-    activeBlock.orientation = chooseRandomOrientation(activeBlock.block);
-    activeBlock.x = findMiddle(activeBlock.block, activeBlock.orientation);
+void spawnBlock(GameState &state, ActiveBlock &activeBlock){
+    activeBlock.block = state.nextBlock;
+    activeBlock.orientation = Piece::chooseRandomOrientation(activeBlock.block);
+    activeBlock.x = Piece::findMiddle(activeBlock.block, activeBlock.orientation);
     activeBlock.y = 0;
-    activeBlock.color = getBlockColor(activeBlock.block);
-    nextBlock = chooseRandomBlock();
+    activeBlock.color = Piece::getBlockColor(activeBlock.block);
+    state.nextBlock = Piece::chooseRandomBlock();
 
-    if(!canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y)){
-        gameOver = true;
+    if(!canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y)){
+        state.gameOver = true;
     }
 }
 
-void lockActiveBlock(const ActiveBlock &activeBlock){
+void lockActiveBlock(GameState &state, const ActiveBlock &activeBlock){
     int blockValue = (int)activeBlock.block + 1;
 
     for(int i = 0; i < 4; i++){
-        int boardX = activeBlock.x + blockCellX(activeBlock.block, activeBlock.orientation, i);
-        int boardY = activeBlock.y + blockCellY(activeBlock.block, activeBlock.orientation, i);
-        cellInfo[boardY][boardX] = blockValue;
+        int boardX = activeBlock.x + Piece::blockCellX(activeBlock.block, activeBlock.orientation, i);
+        int boardY = activeBlock.y + Piece::blockCellY(activeBlock.block, activeBlock.orientation, i);
+        state.cellInfo[boardY][boardX] = blockValue;
     }
 }
 
-int clearCompletedLines(){
+int clearCompletedLines(GameState &state){
     int cleared = 0;
 
     for(int row = ROWS - 1; row >= 0; row--){
         bool isFull = true;
 
         for(int col = 0; col < COLS; col++){
-            if(cellInfo[row][col] == EMPTY_CELL){
+            if(state.cellInfo[row][col] == EMPTY_CELL){
                 isFull = false;
                 break;
             }
@@ -293,22 +304,25 @@ int clearCompletedLines(){
 
         for(int moveRow = row; moveRow > 0; moveRow--){
             for(int col = 0; col < COLS; col++){
-                cellInfo[moveRow][col] = cellInfo[moveRow - 1][col];
+                state.cellInfo[moveRow][col] = state.cellInfo[moveRow - 1][col];
             }
         }
 
         for(int col = 0; col < COLS; col++){
-            cellInfo[0][col] = EMPTY_CELL;
+            state.cellInfo[0][col] = EMPTY_CELL;
         }
 
-        // Re-check this row index because rows above were shifted down.
         row++;
     }
 
     return cleared;
 }
 
-void applyLineClearScore(int linesCleared){
+} // namespace Board
+
+namespace Rules {
+
+void applyLineClearScore(GameState &state, int linesCleared){
     if(linesCleared <= 0){
         return;
     }
@@ -316,27 +330,20 @@ void applyLineClearScore(int linesCleared){
     const int scoreByClear[5] = {0, 100, 300, 500, 800};
     int appliedLines = std::min(linesCleared, 4);
 
-    score += scoreByClear[appliedLines] * level;
-    clearedLinesTotal += linesCleared;
-    level = 1 + (clearedLinesTotal / 10);
+    state.score += scoreByClear[appliedLines] * state.level;
+    state.clearedLinesTotal += linesCleared;
+    state.level = 1 + (state.clearedLinesTotal / 10);
 }
 
-float getCurrentFallDelay(){
-    float delay = 0.60f - 0.05f * (level - 1);
+float getCurrentFallDelay(const GameState &state){
+    float delay = 0.60f - 0.05f * (state.level - 1);
     if(delay < 0.08f){
         delay = 0.08f;
     }
     return delay;
 }
 
-void finishActivePiece(ActiveBlock &activeBlock){
-    lockActiveBlock(activeBlock);
-    int linesCleared = clearCompletedLines();
-    applyLineClearScore(linesCleared);
-    spawnBlock(activeBlock);
-}
-
-} // namespace GameLogic
+} // namespace Rules
 
 namespace Rendering {
 
@@ -350,10 +357,10 @@ void drawGrid(){
     }
 }
 
-void drawLockedCells(){
+void drawLockedCells(const GameState &state){
     for(int row = 0; row < ROWS; row++){
         for(int col = 0; col < COLS; col++){
-            int cellValue = cellInfo[row][col];
+            int cellValue = state.cellInfo[row][col];
             if(cellValue != EMPTY_CELL){
                 Color color = BLOCK_COLORS[cellValue - 1];
                 DrawRectangle(col * CELL_WIDTH, row * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT, color);
@@ -364,28 +371,28 @@ void drawLockedCells(){
 
 void drawActiveBlock(const ActiveBlock &activeBlock){
     for(int i = 0; i < 4; i++){
-        int boardX = activeBlock.x + GameLogic::blockCellX(activeBlock.block, activeBlock.orientation, i);
-        int boardY = activeBlock.y + GameLogic::blockCellY(activeBlock.block, activeBlock.orientation, i);
+        int boardX = activeBlock.x + Piece::blockCellX(activeBlock.block, activeBlock.orientation, i);
+        int boardY = activeBlock.y + Piece::blockCellY(activeBlock.block, activeBlock.orientation, i);
         DrawRectangle(boardX * CELL_WIDTH, boardY * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT, activeBlock.color);
     }
 
-    // TODO(NEXT): Draw a ghost piece (landing preview) to improve placement planning.
+    // TODO: Draw a ghost piece (landing preview) to improve placement planning.
 }
 
 void drawNextBlockPreview(Block block, int originX, int originY){
     const int previewCell = 18;
     Orientation previewOrientation = (block == BarBlock) ? Right : Up;
-    Color color = GameLogic::getBlockColor(block);
+    Color color = Piece::getBlockColor(block);
 
     for(int i = 0; i < 4; i++){
-        int px = originX + GameLogic::blockCellX(block, previewOrientation, i) * previewCell;
-        int py = originY + GameLogic::blockCellY(block, previewOrientation, i) * previewCell;
+        int px = originX + Piece::blockCellX(block, previewOrientation, i) * previewCell;
+        int py = originY + Piece::blockCellY(block, previewOrientation, i) * previewCell;
         DrawRectangle(px, py, previewCell, previewCell, color);
         DrawRectangleLines(px, py, previewCell, previewCell, Fade(BLACK, 0.5f));
     }
 }
 
-void drawInfoPanel(){
+void drawInfoPanel(const GameState &state){
     int infoStartX = BOARD_WIDTH;
     int textX = infoStartX + 18;
 
@@ -393,13 +400,13 @@ void drawInfoPanel(){
     DrawLine(infoStartX, 0, infoStartX, BOARD_HEIGHT, GRAY);
 
     DrawText("TETRIS", textX, 20, 36, BLACK);
-    DrawText(TextFormat("Score: %d", score), textX, 90, 24, DARKBLUE);
-    DrawText(TextFormat("Lines: %d", clearedLinesTotal), textX, 125, 24, DARKBLUE);
-    DrawText(TextFormat("Level: %d", level), textX, 160, 24, DARKBLUE);
+    DrawText(TextFormat("Score: %d", state.score), textX, 90, 24, DARKBLUE);
+    DrawText(TextFormat("Lines: %d", state.clearedLinesTotal), textX, 125, 24, DARKBLUE);
+    DrawText(TextFormat("Level: %d", state.level), textX, 160, 24, DARKBLUE);
 
     DrawText("Next Piece", textX, 210, 24, BLACK);
-    drawNextBlockPreview(nextBlock, textX, 245);
-    DrawText(TextFormat("Type: %s", GameLogic::getBlockName(nextBlock)), textX, 330, 20, DARKGRAY);
+    drawNextBlockPreview(state.nextBlock, textX, 245);
+    DrawText(TextFormat("Type: %s", Piece::getBlockName(state.nextBlock)), textX, 330, 20, DARKGRAY);
 
     DrawText("Controls", textX, 385, 22, BLACK);
     DrawText("Left/Right: Move", textX, 415, 18, DARKGRAY);
@@ -419,29 +426,29 @@ void drawGameOverOverlay(){
 
 namespace Movement {
 
-bool canBlockGoDown(const ActiveBlock &activeBlock){
-    return GameLogic::canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y + 1);
+bool canBlockGoDown(const GameState &state, const ActiveBlock &activeBlock){
+    return Board::canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y + 1);
 }
 
-bool canBlockGoLeft(const ActiveBlock &activeBlock){
-    return GameLogic::canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x - 1, activeBlock.y);
+bool canBlockGoLeft(const GameState &state, const ActiveBlock &activeBlock){
+    return Board::canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x - 1, activeBlock.y);
 }
 
-bool canBlockGoRight(const ActiveBlock &activeBlock){
-    return GameLogic::canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x + 1, activeBlock.y);
+bool canBlockGoRight(const GameState &state, const ActiveBlock &activeBlock){
+    return Board::canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x + 1, activeBlock.y);
 }
 
-bool canBlockRotate(const ActiveBlock &activeBlock){
+bool canBlockRotate(const GameState &state, const ActiveBlock &activeBlock){
     Orientation nextOrientation = (Orientation)(((int)activeBlock.orientation + 1) % 4);
 
-    if(GameLogic::canPlace(activeBlock.block, nextOrientation, activeBlock.x, activeBlock.y)){
+    if(Board::canPlace(state, activeBlock.block, nextOrientation, activeBlock.x, activeBlock.y)){
         return true;
     }
 
     for(int i = 0; i < KICK_TRIES; i++){
         int kickX = WALL_KICKS[i][0];
         int kickY = WALL_KICKS[i][1];
-        if(GameLogic::canPlace(activeBlock.block, nextOrientation, activeBlock.x + kickX, activeBlock.y + kickY)){
+        if(Board::canPlace(state, activeBlock.block, nextOrientation, activeBlock.x + kickX, activeBlock.y + kickY)){
             return true;
         }
     }
@@ -449,10 +456,10 @@ bool canBlockRotate(const ActiveBlock &activeBlock){
     return false;
 }
 
-void rotateBlock(ActiveBlock &activeBlock){
+void rotateBlock(const GameState &state, ActiveBlock &activeBlock){
     Orientation nextOrientation = (Orientation)(((int)activeBlock.orientation + 1) % 4);
 
-    if(GameLogic::canPlace(activeBlock.block, nextOrientation, activeBlock.x, activeBlock.y)){
+    if(Board::canPlace(state, activeBlock.block, nextOrientation, activeBlock.x, activeBlock.y)){
         activeBlock.orientation = nextOrientation;
         return;
     }
@@ -460,7 +467,7 @@ void rotateBlock(ActiveBlock &activeBlock){
     for(int i = 0; i < KICK_TRIES; i++){
         int kickX = WALL_KICKS[i][0];
         int kickY = WALL_KICKS[i][1];
-        if(GameLogic::canPlace(activeBlock.block, nextOrientation, activeBlock.x + kickX, activeBlock.y + kickY)){
+        if(Board::canPlace(state, activeBlock.block, nextOrientation, activeBlock.x + kickX, activeBlock.y + kickY)){
             activeBlock.x += kickX;
             activeBlock.y += kickY;
             activeBlock.orientation = nextOrientation;
@@ -468,56 +475,63 @@ void rotateBlock(ActiveBlock &activeBlock){
         }
     }
 
-    // TODO(NEXT): Replace this basic kick logic with full SRS kick tables for competitive behavior.
+    // TODO: Replace this basic kick logic with full SRS kick tables for competitive behavior.
 }
 
 } // namespace Movement
 
-void playGame(ActiveBlock &activeBlock){
-    Rendering::drawLockedCells();
+void finishActivePiece(GameState &state, ActiveBlock &activeBlock){
+    Board::lockActiveBlock(state, activeBlock);
+    int linesCleared = Board::clearCompletedLines(state);
+    Rules::applyLineClearScore(state, linesCleared);
+    Board::spawnBlock(state, activeBlock);
+}
 
-    if(!gameOver){
+void playGame(GameState &state, ActiveBlock &activeBlock){
+    Rendering::drawLockedCells(state);
+
+    if(!state.gameOver){
         Rendering::drawActiveBlock(activeBlock);
     }
 
-    if(gameOver){
+    if(state.gameOver){
         if(IsKeyPressed(KEY_R)){
-            GameLogic::resetGame(activeBlock);
+            Board::resetGame(state, activeBlock);
         }
         return;
     }
 
-    if(IsKeyPressed(KEY_LEFT) && Movement::canBlockGoLeft(activeBlock)){
+    if(IsKeyPressed(KEY_LEFT) && Movement::canBlockGoLeft(state, activeBlock)){
         activeBlock.x--;
     }
 
-    if(IsKeyPressed(KEY_RIGHT) && Movement::canBlockGoRight(activeBlock)){
+    if(IsKeyPressed(KEY_RIGHT) && Movement::canBlockGoRight(state, activeBlock)){
         activeBlock.x++;
     }
 
-    if(IsKeyPressed(KEY_UP) && Movement::canBlockRotate(activeBlock)){
-        Movement::rotateBlock(activeBlock);
+    if(IsKeyPressed(KEY_UP) && Movement::canBlockRotate(state, activeBlock)){
+        Movement::rotateBlock(state, activeBlock);
     }
 
     if(IsKeyPressed(KEY_SPACE)){
-        while(Movement::canBlockGoDown(activeBlock)){
+        while(Movement::canBlockGoDown(state, activeBlock)){
             activeBlock.y++;
         }
-        GameLogic::finishActivePiece(activeBlock);
-        fallDelay = 0.0f;
+        finishActivePiece(state, activeBlock);
+        state.fallDelay = 0.0f;
         return;
     }
 
-    float targetFallDelay = IsKeyDown(KEY_DOWN) ? 0.05f : GameLogic::getCurrentFallDelay();
-    fallDelay += GetFrameTime();
+    float targetFallDelay = IsKeyDown(KEY_DOWN) ? 0.05f : Rules::getCurrentFallDelay(state);
+    state.fallDelay += GetFrameTime();
 
-    if(fallDelay >= targetFallDelay){
-        if(Movement::canBlockGoDown(activeBlock)){
+    if(state.fallDelay >= targetFallDelay){
+        if(Movement::canBlockGoDown(state, activeBlock)){
             activeBlock.y++;
         }
         else{
-            GameLogic::finishActivePiece(activeBlock);
+            finishActivePiece(state, activeBlock);
         }
-        fallDelay = 0.0f;
+        state.fallDelay = 0.0f;
     }
 }
