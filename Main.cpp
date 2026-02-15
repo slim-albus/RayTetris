@@ -96,55 +96,58 @@ Block nextBlock = BarBlock;
 
 void init();
 void initCells();
-void resetGame(ActiveBlock &activeBlock);
+void playGame(ActiveBlock &activeBlock);
 
+namespace GameLogic {
+void resetGame(ActiveBlock &activeBlock);
 int blockCellX(Block block, Orientation orientation, int index);
 int blockCellY(Block block, Orientation orientation, int index);
 Color getBlockColor(Block block);
 const char *getBlockName(Block block);
-
 Block chooseRandomBlock();
 Orientation chooseRandomOrientation(Block block);
 int findMiddle(Block block, Orientation orientation);
-
 bool canPlace(Block block, Orientation orientation, int x, int y);
-
 void spawnBlock(ActiveBlock &activeBlock);
+void lockActiveBlock(const ActiveBlock &activeBlock);
+int clearCompletedLines();
+void applyLineClearScore(int linesCleared);
+float getCurrentFallDelay();
+void finishActivePiece(ActiveBlock &activeBlock);
+}
+
+namespace Rendering {
 void drawGrid();
 void drawLockedCells();
 void drawActiveBlock(const ActiveBlock &activeBlock);
 void drawInfoPanel();
 void drawNextBlockPreview(Block block, int originX, int originY);
 void drawGameOverOverlay();
+}
 
+namespace Movement {
 bool canBlockGoDown(const ActiveBlock &activeBlock);
 bool canBlockGoLeft(const ActiveBlock &activeBlock);
 bool canBlockGoRight(const ActiveBlock &activeBlock);
 bool canBlockRotate(const ActiveBlock &activeBlock);
 void rotateBlock(ActiveBlock &activeBlock);
-
-void lockActiveBlock(const ActiveBlock &activeBlock);
-int clearCompletedLines();
-void applyLineClearScore(int linesCleared);
-float getCurrentFallDelay();
-void finishActivePiece(ActiveBlock &activeBlock);
-void playGame(ActiveBlock &activeBlock);
+}
 
 int main(){
     init();
     initCells();
 
     ActiveBlock activeBlock;
-    resetGame(activeBlock);
+    GameLogic::resetGame(activeBlock);
 
     while(!WindowShouldClose()){
         BeginDrawing();
             ClearBackground(WINDOW_BG_COLOR);
             playGame(activeBlock);
-            drawGrid();
-            drawInfoPanel();
+            Rendering::drawGrid();
+            Rendering::drawInfoPanel();
             if(gameOver){
-                drawGameOverOverlay();
+                Rendering::drawGameOverOverlay();
             }
         EndDrawing();
     }
@@ -165,6 +168,8 @@ void initCells(){
         }
     }
 }
+
+namespace GameLogic {
 
 void resetGame(ActiveBlock &activeBlock){
     initCells();
@@ -257,133 +262,6 @@ void spawnBlock(ActiveBlock &activeBlock){
     }
 }
 
-void drawGrid(){
-    for(int row = 0; row <= ROWS; row++){
-        DrawLine(0, row * CELL_HEIGHT, BOARD_WIDTH, row * CELL_HEIGHT, GRID_LINE_COLOR);
-    }
-
-    for(int col = 0; col <= COLS; col++){
-        DrawLine(col * CELL_WIDTH, 0, col * CELL_WIDTH, BOARD_HEIGHT, GRID_LINE_COLOR);
-    }
-}
-
-void drawLockedCells(){
-    for(int row = 0; row < ROWS; row++){
-        for(int col = 0; col < COLS; col++){
-            int cellValue = cellInfo[row][col];
-            if(cellValue != EMPTY_CELL){
-                Color color = BLOCK_COLORS[cellValue - 1];
-                DrawRectangle(col * CELL_WIDTH, row * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT, color);
-            }
-        }
-    }
-}
-
-void drawActiveBlock(const ActiveBlock &activeBlock){
-    for(int i = 0; i < 4; i++){
-        int boardX = activeBlock.x + blockCellX(activeBlock.block, activeBlock.orientation, i);
-        int boardY = activeBlock.y + blockCellY(activeBlock.block, activeBlock.orientation, i);
-        DrawRectangle(boardX * CELL_WIDTH, boardY * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT, activeBlock.color);
-    }
-
-    // TODO(NEXT): Draw a ghost piece (landing preview) to improve placement planning.
-}
-
-void drawNextBlockPreview(Block block, int originX, int originY){
-    const int previewCell = 18;
-    Orientation previewOrientation = (block == BarBlock) ? Right : Up;
-    Color color = getBlockColor(block);
-
-    for(int i = 0; i < 4; i++){
-        int px = originX + blockCellX(block, previewOrientation, i) * previewCell;
-        int py = originY + blockCellY(block, previewOrientation, i) * previewCell;
-        DrawRectangle(px, py, previewCell, previewCell, color);
-        DrawRectangleLines(px, py, previewCell, previewCell, Fade(BLACK, 0.5f));
-    }
-}
-
-void drawInfoPanel(){
-    int infoStartX = BOARD_WIDTH;
-    int textX = infoStartX + 18;
-
-    DrawRectangle(infoStartX, 0, INFO_AREA_WIDTH, BOARD_HEIGHT, Fade(LIGHTGRAY, 0.2f));
-    DrawLine(infoStartX, 0, infoStartX, BOARD_HEIGHT, GRAY);
-
-    DrawText("TETRIS", textX, 20, 36, BLACK);
-    DrawText(TextFormat("Score: %d", score), textX, 90, 24, DARKBLUE);
-    DrawText(TextFormat("Lines: %d", clearedLinesTotal), textX, 125, 24, DARKBLUE);
-    DrawText(TextFormat("Level: %d", level), textX, 160, 24, DARKBLUE);
-
-    DrawText("Next Piece", textX, 210, 24, BLACK);
-    drawNextBlockPreview(nextBlock, textX, 245);
-    DrawText(TextFormat("Type: %s", getBlockName(nextBlock)), textX, 330, 20, DARKGRAY);
-
-    DrawText("Controls", textX, 385, 22, BLACK);
-    DrawText("Left/Right: Move", textX, 415, 18, DARKGRAY);
-    DrawText("Up: Rotate", textX, 440, 18, DARKGRAY);
-    DrawText("Down: Soft drop", textX, 465, 18, DARKGRAY);
-    DrawText("Space: Hard drop", textX, 490, 18, DARKGRAY);
-    DrawText("R: Restart", textX, 515, 18, DARKGRAY);
-}
-
-void drawGameOverOverlay(){
-    DrawRectangle(20, 240, BOARD_WIDTH - 40, 120, Fade(BLACK, 0.7f));
-    DrawText("GAME OVER", 48, 263, 36, RAYWHITE);
-    DrawText("Press R to restart", 68, 312, 20, RAYWHITE);
-}
-
-bool canBlockGoDown(const ActiveBlock &activeBlock){
-    return canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y + 1);
-}
-
-bool canBlockGoLeft(const ActiveBlock &activeBlock){
-    return canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x - 1, activeBlock.y);
-}
-
-bool canBlockGoRight(const ActiveBlock &activeBlock){
-    return canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x + 1, activeBlock.y);
-}
-
-bool canBlockRotate(const ActiveBlock &activeBlock){
-    Orientation nextOrientation = (Orientation)(((int)activeBlock.orientation + 1) % 4);
-
-    if(canPlace(activeBlock.block, nextOrientation, activeBlock.x, activeBlock.y)){
-        return true;
-    }
-
-    for(int i = 0; i < KICK_TRIES; i++){
-        int kickX = WALL_KICKS[i][0];
-        int kickY = WALL_KICKS[i][1];
-        if(canPlace(activeBlock.block, nextOrientation, activeBlock.x + kickX, activeBlock.y + kickY)){
-            return true;
-        }
-    }
-
-    return false;
-}
-
-void rotateBlock(ActiveBlock &activeBlock){
-    Orientation nextOrientation = (Orientation)(((int)activeBlock.orientation + 1) % 4);
-
-    if(canPlace(activeBlock.block, nextOrientation, activeBlock.x, activeBlock.y)){
-        activeBlock.orientation = nextOrientation;
-        return;
-    }
-
-    for(int i = 0; i < KICK_TRIES; i++){
-        int kickX = WALL_KICKS[i][0];
-        int kickY = WALL_KICKS[i][1];
-        if(canPlace(activeBlock.block, nextOrientation, activeBlock.x + kickX, activeBlock.y + kickY)){
-            activeBlock.x += kickX;
-            activeBlock.y += kickY;
-            activeBlock.orientation = nextOrientation;
-            return;
-        }
-    }
-
-    // TODO(NEXT): Replace this basic kick logic with full SRS kick tables for competitive behavior.
-}
-
 void lockActiveBlock(const ActiveBlock &activeBlock){
     int blockValue = (int)activeBlock.block + 1;
 
@@ -458,50 +336,187 @@ void finishActivePiece(ActiveBlock &activeBlock){
     spawnBlock(activeBlock);
 }
 
+} // namespace GameLogic
+
+namespace Rendering {
+
+void drawGrid(){
+    for(int row = 0; row <= ROWS; row++){
+        DrawLine(0, row * CELL_HEIGHT, BOARD_WIDTH, row * CELL_HEIGHT, GRID_LINE_COLOR);
+    }
+
+    for(int col = 0; col <= COLS; col++){
+        DrawLine(col * CELL_WIDTH, 0, col * CELL_WIDTH, BOARD_HEIGHT, GRID_LINE_COLOR);
+    }
+}
+
+void drawLockedCells(){
+    for(int row = 0; row < ROWS; row++){
+        for(int col = 0; col < COLS; col++){
+            int cellValue = cellInfo[row][col];
+            if(cellValue != EMPTY_CELL){
+                Color color = BLOCK_COLORS[cellValue - 1];
+                DrawRectangle(col * CELL_WIDTH, row * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT, color);
+            }
+        }
+    }
+}
+
+void drawActiveBlock(const ActiveBlock &activeBlock){
+    for(int i = 0; i < 4; i++){
+        int boardX = activeBlock.x + GameLogic::blockCellX(activeBlock.block, activeBlock.orientation, i);
+        int boardY = activeBlock.y + GameLogic::blockCellY(activeBlock.block, activeBlock.orientation, i);
+        DrawRectangle(boardX * CELL_WIDTH, boardY * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT, activeBlock.color);
+    }
+
+    // TODO(NEXT): Draw a ghost piece (landing preview) to improve placement planning.
+}
+
+void drawNextBlockPreview(Block block, int originX, int originY){
+    const int previewCell = 18;
+    Orientation previewOrientation = (block == BarBlock) ? Right : Up;
+    Color color = GameLogic::getBlockColor(block);
+
+    for(int i = 0; i < 4; i++){
+        int px = originX + GameLogic::blockCellX(block, previewOrientation, i) * previewCell;
+        int py = originY + GameLogic::blockCellY(block, previewOrientation, i) * previewCell;
+        DrawRectangle(px, py, previewCell, previewCell, color);
+        DrawRectangleLines(px, py, previewCell, previewCell, Fade(BLACK, 0.5f));
+    }
+}
+
+void drawInfoPanel(){
+    int infoStartX = BOARD_WIDTH;
+    int textX = infoStartX + 18;
+
+    DrawRectangle(infoStartX, 0, INFO_AREA_WIDTH, BOARD_HEIGHT, Fade(LIGHTGRAY, 0.2f));
+    DrawLine(infoStartX, 0, infoStartX, BOARD_HEIGHT, GRAY);
+
+    DrawText("TETRIS", textX, 20, 36, BLACK);
+    DrawText(TextFormat("Score: %d", score), textX, 90, 24, DARKBLUE);
+    DrawText(TextFormat("Lines: %d", clearedLinesTotal), textX, 125, 24, DARKBLUE);
+    DrawText(TextFormat("Level: %d", level), textX, 160, 24, DARKBLUE);
+
+    DrawText("Next Piece", textX, 210, 24, BLACK);
+    drawNextBlockPreview(nextBlock, textX, 245);
+    DrawText(TextFormat("Type: %s", GameLogic::getBlockName(nextBlock)), textX, 330, 20, DARKGRAY);
+
+    DrawText("Controls", textX, 385, 22, BLACK);
+    DrawText("Left/Right: Move", textX, 415, 18, DARKGRAY);
+    DrawText("Up: Rotate", textX, 440, 18, DARKGRAY);
+    DrawText("Down: Soft drop", textX, 465, 18, DARKGRAY);
+    DrawText("Space: Hard drop", textX, 490, 18, DARKGRAY);
+    DrawText("R: Restart", textX, 515, 18, DARKGRAY);
+}
+
+void drawGameOverOverlay(){
+    DrawRectangle(20, 240, BOARD_WIDTH - 40, 120, Fade(BLACK, 0.7f));
+    DrawText("GAME OVER", 48, 263, 36, RAYWHITE);
+    DrawText("Press R to restart", 68, 312, 20, RAYWHITE);
+}
+
+} // namespace Rendering
+
+namespace Movement {
+
+bool canBlockGoDown(const ActiveBlock &activeBlock){
+    return GameLogic::canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y + 1);
+}
+
+bool canBlockGoLeft(const ActiveBlock &activeBlock){
+    return GameLogic::canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x - 1, activeBlock.y);
+}
+
+bool canBlockGoRight(const ActiveBlock &activeBlock){
+    return GameLogic::canPlace(activeBlock.block, activeBlock.orientation, activeBlock.x + 1, activeBlock.y);
+}
+
+bool canBlockRotate(const ActiveBlock &activeBlock){
+    Orientation nextOrientation = (Orientation)(((int)activeBlock.orientation + 1) % 4);
+
+    if(GameLogic::canPlace(activeBlock.block, nextOrientation, activeBlock.x, activeBlock.y)){
+        return true;
+    }
+
+    for(int i = 0; i < KICK_TRIES; i++){
+        int kickX = WALL_KICKS[i][0];
+        int kickY = WALL_KICKS[i][1];
+        if(GameLogic::canPlace(activeBlock.block, nextOrientation, activeBlock.x + kickX, activeBlock.y + kickY)){
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void rotateBlock(ActiveBlock &activeBlock){
+    Orientation nextOrientation = (Orientation)(((int)activeBlock.orientation + 1) % 4);
+
+    if(GameLogic::canPlace(activeBlock.block, nextOrientation, activeBlock.x, activeBlock.y)){
+        activeBlock.orientation = nextOrientation;
+        return;
+    }
+
+    for(int i = 0; i < KICK_TRIES; i++){
+        int kickX = WALL_KICKS[i][0];
+        int kickY = WALL_KICKS[i][1];
+        if(GameLogic::canPlace(activeBlock.block, nextOrientation, activeBlock.x + kickX, activeBlock.y + kickY)){
+            activeBlock.x += kickX;
+            activeBlock.y += kickY;
+            activeBlock.orientation = nextOrientation;
+            return;
+        }
+    }
+
+    // TODO(NEXT): Replace this basic kick logic with full SRS kick tables for competitive behavior.
+}
+
+} // namespace Movement
+
 void playGame(ActiveBlock &activeBlock){
-    drawLockedCells();
+    Rendering::drawLockedCells();
 
     if(!gameOver){
-        drawActiveBlock(activeBlock);
+        Rendering::drawActiveBlock(activeBlock);
     }
 
     if(gameOver){
         if(IsKeyPressed(KEY_R)){
-            resetGame(activeBlock);
+            GameLogic::resetGame(activeBlock);
         }
         return;
     }
 
-    if(IsKeyPressed(KEY_LEFT) && canBlockGoLeft(activeBlock)){
+    if(IsKeyPressed(KEY_LEFT) && Movement::canBlockGoLeft(activeBlock)){
         activeBlock.x--;
     }
 
-    if(IsKeyPressed(KEY_RIGHT) && canBlockGoRight(activeBlock)){
+    if(IsKeyPressed(KEY_RIGHT) && Movement::canBlockGoRight(activeBlock)){
         activeBlock.x++;
     }
 
-    if(IsKeyPressed(KEY_UP) && canBlockRotate(activeBlock)){
-        rotateBlock(activeBlock);
+    if(IsKeyPressed(KEY_UP) && Movement::canBlockRotate(activeBlock)){
+        Movement::rotateBlock(activeBlock);
     }
 
     if(IsKeyPressed(KEY_SPACE)){
-        while(canBlockGoDown(activeBlock)){
+        while(Movement::canBlockGoDown(activeBlock)){
             activeBlock.y++;
         }
-        finishActivePiece(activeBlock);
+        GameLogic::finishActivePiece(activeBlock);
         fallDelay = 0.0f;
         return;
     }
 
-    float targetFallDelay = IsKeyDown(KEY_DOWN) ? 0.05f : getCurrentFallDelay();
+    float targetFallDelay = IsKeyDown(KEY_DOWN) ? 0.05f : GameLogic::getCurrentFallDelay();
     fallDelay += GetFrameTime();
 
     if(fallDelay >= targetFallDelay){
-        if(canBlockGoDown(activeBlock)){
+        if(Movement::canBlockGoDown(activeBlock)){
             activeBlock.y++;
         }
         else{
-            finishActivePiece(activeBlock);
+            GameLogic::finishActivePiece(activeBlock);
         }
         fallDelay = 0.0f;
     }
