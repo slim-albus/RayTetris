@@ -4,17 +4,19 @@
 enum Block {BarBlock, BoxBlock, TBlock, LBlock, JBlock, ZBlock, SBlock};
 enum Orientation {Up, Right, Down, Left};
 
-constexpr int BOARD_WIDTH = 300;
-constexpr int BOARD_HEIGHT = 600;
-constexpr int ROWS = 20;
-constexpr int COLS = 10;
-constexpr int CELL_WIDTH = BOARD_WIDTH / COLS;
-constexpr int CELL_HEIGHT = BOARD_HEIGHT / ROWS;
-constexpr int INFO_AREA_WIDTH = 250;
+const int BOARD_WIDTH = 300;
+const int BOARD_HEIGHT = 600;
+const int ROWS = 20;
+const int COLS = 10;
+const int CELL_WIDTH = BOARD_WIDTH / COLS;
+const int CELL_HEIGHT = BOARD_HEIGHT / ROWS;
+const int INFO_AREA_WIDTH = 250;
+const int SCREEN_WIDTH = BOARD_WIDTH + INFO_AREA_WIDTH;
+const int SCREEN_HEIGHT = BOARD_HEIGHT;
 
-constexpr int EMPTY_CELL = 0;
-constexpr int KICK_TRIES = 6;
-constexpr int WALL_KICKS[KICK_TRIES][2] = {
+const int EMPTY_CELL = 0;
+const int KICK_TRIES = 6;
+const int WALL_KICKS[KICK_TRIES][2] = {
     {-1, 0}, {1, 0}, {-2, 0}, {2, 0}, {0, -1}, {0, 1}
 };
 
@@ -77,6 +79,7 @@ const int BLOCK_SHAPES[7][4][4][2] = {
     }
 };
 
+// Represents the currently falling tetromino.
 struct ActiveBlock {
     Block block;
     Orientation orientation;
@@ -85,6 +88,7 @@ struct ActiveBlock {
     Color color;
 };
 
+// Holds persistent gameplay state shared across frames.
 struct GameState {
     int cellInfo[ROWS][COLS];
     int score;
@@ -140,19 +144,23 @@ bool canBlockRotate(const GameState &state, const ActiveBlock &activeBlock);
 void rotateBlock(const GameState &state, ActiveBlock &activeBlock);
 } // namespace Movement
 
+// Program entry: initialize systems and run the frame loop until window close.
 int main(){
     init();
 
     GameState state;
     ActiveBlock activeBlock;
+    // Initialize gameplay state before entering the frame loop.
     Board::resetGame(state, activeBlock);
 
+    // Main frame loop: update + draw once per iteration.
     while(!WindowShouldClose()){
         BeginDrawing();
             ClearBackground(WINDOW_BG_COLOR);
             playGame(state, activeBlock);
             Rendering::drawGrid();
             Rendering::drawInfoPanel(state);
+            // Overlay is rendered only when the current round is over.
             if(state.gameOver){
                 Rendering::drawGameOverOverlay();
             }
@@ -163,11 +171,13 @@ int main(){
     return 0;
 }
 
+// Creates the raylib window and sets the target FPS.
 void init(){
-    InitWindow(BOARD_WIDTH + INFO_AREA_WIDTH, BOARD_HEIGHT, "TETRIS");
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "TETRIS");
     SetTargetFPS(60);
 }
 
+// Clears the board so every cell is EMPTY_CELL.
 void initCells(GameState &state){
     for(int row = 0; row < ROWS; row++){
         for(int col = 0; col < COLS; col++){
@@ -178,18 +188,22 @@ void initCells(GameState &state){
 
 namespace Piece {
 
+// Returns the X offset of one of the 4 cells of a piece for a given orientation.
 int blockCellX(Block block, Orientation orientation, int index){
     return BLOCK_SHAPES[(int)block][(int)orientation][index][0];
 }
 
+// Returns the Y offset of one of the 4 cells of a piece for a given orientation.
 int blockCellY(Block block, Orientation orientation, int index){
     return BLOCK_SHAPES[(int)block][(int)orientation][index][1];
 }
 
+// Maps a block type to its display color.
 Color getBlockColor(Block block){
     return BLOCK_COLORS[(int)block];
 }
 
+// Short block name used in HUD/preview.
 const char *getBlockName(Block block){
     switch(block){
         case BarBlock: return "I";
@@ -203,10 +217,12 @@ const char *getBlockName(Block block){
     return "?";
 }
 
+// Chooses a random tetromino type (I/O/T/L/J/Z/S).
 Block chooseRandomBlock(){
     return (Block)GetRandomValue((int)BarBlock, (int)SBlock);
 }
 
+// Chooses a random starting orientation (O is fixed because all rotations are identical).
 Orientation chooseRandomOrientation(Block block){
     if(block == BoxBlock){
         return Up;
@@ -214,6 +230,7 @@ Orientation chooseRandomOrientation(Block block){
     return (Orientation)GetRandomValue((int)Up, (int)Left);
 }
 
+// Computes spawn X so the piece appears centered based on its current rotated width.
 int findMiddle(Block block, Orientation orientation){
     int minX = COLS;
     int maxX = 0;
@@ -232,6 +249,7 @@ int findMiddle(Block block, Orientation orientation){
 
 namespace Board {
 
+// Resets score/level/board and spawns the first active piece for a new round.
 void resetGame(GameState &state, ActiveBlock &activeBlock){
     initCells(state);
     state.score = 0;
@@ -239,10 +257,12 @@ void resetGame(GameState &state, ActiveBlock &activeBlock){
     state.level = 1;
     state.gameOver = false;
     state.fallDelay = 0.0f;
+    // Roll a new queued piece for the following spawn.
     state.nextBlock = Piece::chooseRandomBlock();
     spawnBlock(state, activeBlock);
 }
 
+// Core collision function: validates bounds and overlap for all 4 cells.
 bool canPlace(const GameState &state, Block block, Orientation orientation, int x, int y){
     for(int i = 0; i < 4; i++){
         int boardX = x + Piece::blockCellX(block, orientation, i);
@@ -260,19 +280,24 @@ bool canPlace(const GameState &state, Block block, Orientation orientation, int 
     return true;
 }
 
+// Promotes nextBlock into active play, then rolls a new nextBlock.
+// Also checks spawn collision to detect game-over immediately.
 void spawnBlock(GameState &state, ActiveBlock &activeBlock){
     activeBlock.block = state.nextBlock;
     activeBlock.orientation = Piece::chooseRandomOrientation(activeBlock.block);
     activeBlock.x = Piece::findMiddle(activeBlock.block, activeBlock.orientation);
     activeBlock.y = 0;
     activeBlock.color = Piece::getBlockColor(activeBlock.block);
+    // Roll a new queued piece for the following spawn.
     state.nextBlock = Piece::chooseRandomBlock();
 
+    // If spawn location is blocked, no legal spawn exists -> game over.
     if(!canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y)){
         state.gameOver = true;
     }
 }
 
+// Writes active piece cells into the board grid as locked blocks.
 void lockActiveBlock(GameState &state, const ActiveBlock &activeBlock){
     int blockValue = (int)activeBlock.block + 1;
 
@@ -283,9 +308,11 @@ void lockActiveBlock(GameState &state, const ActiveBlock &activeBlock){
     }
 }
 
+// Clears every full row, shifts rows above down, and returns number of cleared lines.
 int clearCompletedLines(GameState &state){
     int cleared = 0;
 
+    // Scan bottom-up so shifted rows can be rechecked after a line clear.
     for(int row = ROWS - 1; row >= 0; row--){
         bool isFull = true;
 
@@ -322,6 +349,7 @@ int clearCompletedLines(GameState &state){
 
 namespace Rules {
 
+// Applies line-clear scoring and updates total lines + level progression.
 void applyLineClearScore(GameState &state, int linesCleared){
     if(linesCleared <= 0){
         return;
@@ -335,6 +363,7 @@ void applyLineClearScore(GameState &state, int linesCleared){
     state.level = 1 + (state.clearedLinesTotal / 10);
 }
 
+// Converts level to gravity delay: higher level -> smaller delay -> faster falling.
 float getCurrentFallDelay(const GameState &state){
     float delay = 0.60f - 0.05f * (state.level - 1);
     if(delay < 0.08f){
@@ -347,6 +376,7 @@ float getCurrentFallDelay(const GameState &state){
 
 namespace Rendering {
 
+// Draws board guide lines (visual only).
 void drawGrid(){
     for(int row = 0; row <= ROWS; row++){
         DrawLine(0, row * CELL_HEIGHT, BOARD_WIDTH, row * CELL_HEIGHT, GRID_LINE_COLOR);
@@ -357,6 +387,7 @@ void drawGrid(){
     }
 }
 
+// Draws all locked board cells from state.cellInfo.
 void drawLockedCells(const GameState &state){
     for(int row = 0; row < ROWS; row++){
         for(int col = 0; col < COLS; col++){
@@ -369,6 +400,7 @@ void drawLockedCells(const GameState &state){
     }
 }
 
+// Draws the currently falling piece using shape offsets from BLOCK_SHAPES.
 void drawActiveBlock(const ActiveBlock &activeBlock){
     for(int i = 0; i < 4; i++){
         int boardX = activeBlock.x + Piece::blockCellX(activeBlock.block, activeBlock.orientation, i);
@@ -379,6 +411,7 @@ void drawActiveBlock(const ActiveBlock &activeBlock){
     // TODO: Draw a ghost piece (landing preview) to improve placement planning.
 }
 
+// Draws a compact preview of the queued next piece in the side panel.
 void drawNextBlockPreview(Block block, int originX, int originY){
     const int previewCell = 18;
     Orientation previewOrientation = (block == BarBlock) ? Right : Up;
@@ -392,14 +425,15 @@ void drawNextBlockPreview(Block block, int originX, int originY){
     }
 }
 
+// Draws HUD data: score, lines, level, next piece, and control guide.
 void drawInfoPanel(const GameState &state){
     int infoStartX = BOARD_WIDTH;
     int textX = infoStartX + 18;
 
-    DrawRectangle(infoStartX, 0, INFO_AREA_WIDTH, BOARD_HEIGHT, Fade(LIGHTGRAY, 0.2f));
+    DrawRectangle(infoStartX, 0, INFO_AREA_WIDTH, BOARD_HEIGHT, Fade(DARKGRAY, 0.2f));
     DrawLine(infoStartX, 0, infoStartX, BOARD_HEIGHT, GRAY);
 
-    DrawText("TETRIS", textX, 20, 36, BLACK);
+    DrawText("TETRIS", textX, 20, 45, BLACK);
     DrawText(TextFormat("Score: %d", state.score), textX, 90, 24, DARKBLUE);
     DrawText(TextFormat("Lines: %d", state.clearedLinesTotal), textX, 125, 24, DARKBLUE);
     DrawText(TextFormat("Level: %d", state.level), textX, 160, 24, DARKBLUE);
@@ -416,6 +450,7 @@ void drawInfoPanel(const GameState &state){
     DrawText("R: Restart", textX, 515, 18, DARKGRAY);
 }
 
+// Draws the game-over overlay above the board area.
 void drawGameOverOverlay(){
     DrawRectangle(20, 240, BOARD_WIDTH - 40, 120, Fade(BLACK, 0.7f));
     DrawText("GAME OVER", 48, 263, 36, RAYWHITE);
@@ -426,18 +461,22 @@ void drawGameOverOverlay(){
 
 namespace Movement {
 
+// Checks if the active piece can move one row down.
 bool canBlockGoDown(const GameState &state, const ActiveBlock &activeBlock){
     return Board::canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y + 1);
 }
 
+// Checks if the active piece can move one column left.
 bool canBlockGoLeft(const GameState &state, const ActiveBlock &activeBlock){
     return Board::canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x - 1, activeBlock.y);
 }
 
+// Checks if the active piece can move one column right.
 bool canBlockGoRight(const GameState &state, const ActiveBlock &activeBlock){
     return Board::canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x + 1, activeBlock.y);
 }
 
+// Checks clockwise rotation validity with simple wall-kick attempts.
 bool canBlockRotate(const GameState &state, const ActiveBlock &activeBlock){
     Orientation nextOrientation = (Orientation)(((int)activeBlock.orientation + 1) % 4);
 
@@ -445,6 +484,7 @@ bool canBlockRotate(const GameState &state, const ActiveBlock &activeBlock){
         return true;
     }
 
+    // Try a small list of kick offsets so rotation can work near walls/stack.
     for(int i = 0; i < KICK_TRIES; i++){
         int kickX = WALL_KICKS[i][0];
         int kickY = WALL_KICKS[i][1];
@@ -456,6 +496,7 @@ bool canBlockRotate(const GameState &state, const ActiveBlock &activeBlock){
     return false;
 }
 
+// Applies clockwise rotation and first successful kick offset.
 void rotateBlock(const GameState &state, ActiveBlock &activeBlock){
     Orientation nextOrientation = (Orientation)(((int)activeBlock.orientation + 1) % 4);
 
@@ -464,6 +505,7 @@ void rotateBlock(const GameState &state, ActiveBlock &activeBlock){
         return;
     }
 
+    // Try a small list of kick offsets so rotation can work near walls/stack.
     for(int i = 0; i < KICK_TRIES; i++){
         int kickX = WALL_KICKS[i][0];
         int kickY = WALL_KICKS[i][1];
@@ -480,6 +522,7 @@ void rotateBlock(const GameState &state, ActiveBlock &activeBlock){
 
 } // namespace Movement
 
+// Finalizes a landed piece: lock -> clear lines -> score/level update -> spawn next.
 void finishActivePiece(GameState &state, ActiveBlock &activeBlock){
     Board::lockActiveBlock(state, activeBlock);
     int linesCleared = Board::clearCompletedLines(state);
@@ -487,6 +530,7 @@ void finishActivePiece(GameState &state, ActiveBlock &activeBlock){
     Board::spawnBlock(state, activeBlock);
 }
 
+// Per-frame gameplay flow: draw, read input, apply gravity, and resolve piece state.
 void playGame(GameState &state, ActiveBlock &activeBlock){
     Rendering::drawLockedCells(state);
 
@@ -494,8 +538,10 @@ void playGame(GameState &state, ActiveBlock &activeBlock){
         Rendering::drawActiveBlock(activeBlock);
     }
 
+    // In game-over state, only restart input is handled.
     if(state.gameOver){
         if(IsKeyPressed(KEY_R)){
+            // Restart immediately into a fresh round.
             Board::resetGame(state, activeBlock);
         }
         return;
@@ -513,6 +559,7 @@ void playGame(GameState &state, ActiveBlock &activeBlock){
         Movement::rotateBlock(state, activeBlock);
     }
 
+    // Hard drop: move down until blocked, then immediately finalize piece.
     if(IsKeyPressed(KEY_SPACE)){
         while(Movement::canBlockGoDown(state, activeBlock)){
             activeBlock.y++;
@@ -522,6 +569,7 @@ void playGame(GameState &state, ActiveBlock &activeBlock){
         return;
     }
 
+    // Soft drop temporarily overrides gravity speed while Down is held.
     float targetFallDelay = IsKeyDown(KEY_DOWN) ? 0.05f : Rules::getCurrentFallDelay(state);
     state.fallDelay += GetFrameTime();
 
