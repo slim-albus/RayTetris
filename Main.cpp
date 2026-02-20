@@ -34,69 +34,87 @@ const Color PANEL_BORDER_COLOR = {73, 81, 107, 255};
 const Color PANEL_TITLE_COLOR = {232, 238, 255, 255};
 const Color PANEL_PRIMARY_TEXT_COLOR = {188, 199, 231, 255};
 const Color PANEL_MUTED_TEXT_COLOR = {141, 153, 189, 255};
-const Color BLOCK_COLORS[7] = {
-    {0, 194, 255, 255},
-    {255, 205, 64, 255},
-    {188, 124, 255, 255},
-    {255, 156, 77, 255},
-    {86, 128, 255, 255},
-    {255, 95, 124, 255},
-    {88, 224, 147, 255}
-};
-const Color BLOCK_OUTLINE_COLOR = {8, 10, 14, 230};
 
-// Shape data: [block][orientation][cell index][x/y].
-const int BLOCK_SHAPES[7][4][4][2] = {
-    // BarBlock (I)
+struct BlockData {
+    const char *name;
+    Color color;
+    int cells[4][4][2];
+};
+
+// Single source of truth for each block: name, color, and all rotations.
+const BlockData BLOCK_DATA[7] = {
     {
-        {{1, 0}, {1, 1}, {1, 2}, {1, 3}},
-        {{0, 1}, {1, 1}, {2, 1}, {3, 1}},
-        {{2, 0}, {2, 1}, {2, 2}, {2, 3}},
-        {{0, 2}, {1, 2}, {2, 2}, {3, 2}}
+        "I",
+        {0, 194, 255, 255},
+        {
+            {{1, 0}, {1, 1}, {1, 2}, {1, 3}},
+            {{0, 1}, {1, 1}, {2, 1}, {3, 1}},
+            {{2, 0}, {2, 1}, {2, 2}, {2, 3}},
+            {{0, 2}, {1, 2}, {2, 2}, {3, 2}}
+        }
     },
-    // BoxBlock (O)
     {
-        {{1, 0}, {2, 0}, {1, 1}, {2, 1}},
-        {{1, 0}, {2, 0}, {1, 1}, {2, 1}},
-        {{1, 0}, {2, 0}, {1, 1}, {2, 1}},
-        {{1, 0}, {2, 0}, {1, 1}, {2, 1}}
+        "O",
+        {255, 205, 64, 255},
+        {
+            {{1, 0}, {2, 0}, {1, 1}, {2, 1}},
+            {{1, 0}, {2, 0}, {1, 1}, {2, 1}},
+            {{1, 0}, {2, 0}, {1, 1}, {2, 1}},
+            {{1, 0}, {2, 0}, {1, 1}, {2, 1}}
+        }
     },
-    // TBlock
     {
-        {{1, 0}, {0, 1}, {1, 1}, {2, 1}},
-        {{1, 0}, {1, 1}, {2, 1}, {1, 2}},
-        {{0, 1}, {1, 1}, {2, 1}, {1, 2}},
-        {{1, 0}, {0, 1}, {1, 1}, {1, 2}}
+        "T",
+        {188, 124, 255, 255},
+        {
+            {{1, 0}, {0, 1}, {1, 1}, {2, 1}},
+            {{1, 0}, {1, 1}, {2, 1}, {1, 2}},
+            {{0, 1}, {1, 1}, {2, 1}, {1, 2}},
+            {{1, 0}, {0, 1}, {1, 1}, {1, 2}}
+        }
     },
-    // LBlock
     {
-        {{2, 0}, {0, 1}, {1, 1}, {2, 1}},
-        {{1, 0}, {1, 1}, {1, 2}, {2, 2}},
-        {{0, 1}, {1, 1}, {2, 1}, {0, 2}},
-        {{0, 0}, {1, 0}, {1, 1}, {1, 2}}
+        "L",
+        {255, 156, 77, 255},
+        {
+            {{2, 0}, {0, 1}, {1, 1}, {2, 1}},
+            {{1, 0}, {1, 1}, {1, 2}, {2, 2}},
+            {{0, 1}, {1, 1}, {2, 1}, {0, 2}},
+            {{0, 0}, {1, 0}, {1, 1}, {1, 2}}
+        }
     },
-    // JBlock
     {
-        {{0, 0}, {0, 1}, {1, 1}, {2, 1}},
-        {{1, 0}, {2, 0}, {1, 1}, {1, 2}},
-        {{0, 1}, {1, 1}, {2, 1}, {2, 2}},
-        {{1, 0}, {1, 1}, {0, 2}, {1, 2}}
+        "J",
+        {86, 128, 255, 255},
+        {
+            {{0, 0}, {0, 1}, {1, 1}, {2, 1}},
+            {{1, 0}, {2, 0}, {1, 1}, {1, 2}},
+            {{0, 1}, {1, 1}, {2, 1}, {2, 2}},
+            {{1, 0}, {1, 1}, {0, 2}, {1, 2}}
+        }
     },
-    // ZBlock
     {
-        {{0, 0}, {1, 0}, {1, 1}, {2, 1}},
-        {{2, 0}, {1, 1}, {2, 1}, {1, 2}},
-        {{0, 1}, {1, 1}, {1, 2}, {2, 2}},
-        {{1, 0}, {0, 1}, {1, 1}, {0, 2}}
+        "Z",
+        {255, 95, 124, 255},
+        {
+            {{0, 0}, {1, 0}, {1, 1}, {2, 1}},
+            {{2, 0}, {1, 1}, {2, 1}, {1, 2}},
+            {{0, 1}, {1, 1}, {1, 2}, {2, 2}},
+            {{1, 0}, {0, 1}, {1, 1}, {0, 2}}
+        }
     },
-    // SBlock
     {
-        {{1, 0}, {2, 0}, {0, 1}, {1, 1}},
-        {{1, 0}, {1, 1}, {2, 1}, {2, 2}},
-        {{1, 1}, {2, 1}, {0, 2}, {1, 2}},
-        {{0, 0}, {0, 1}, {1, 1}, {1, 2}}
+        "S",
+        {88, 224, 147, 255},
+        {
+            {{1, 0}, {2, 0}, {0, 1}, {1, 1}},
+            {{1, 0}, {1, 1}, {2, 1}, {2, 2}},
+            {{1, 1}, {2, 1}, {0, 2}, {1, 2}},
+            {{0, 0}, {0, 1}, {1, 1}, {1, 2}}
+        }
     }
 };
+const Color BLOCK_OUTLINE_COLOR = {8, 10, 14, 230};
 
 // Represents the currently falling tetromino.
 struct ActiveBlock {
@@ -104,7 +122,6 @@ struct ActiveBlock {
     Orientation orientation;
     int x;
     int y;
-    Color color;
 };
 
 // Holds persistent gameplay state shared across frames.
@@ -209,31 +226,22 @@ namespace Piece {
 
 // Returns the X offset of one of the 4 cells of a piece for a given orientation.
 int blockCellX(Block block, Orientation orientation, int index){
-    return BLOCK_SHAPES[(int)block][(int)orientation][index][0];
+    return BLOCK_DATA[(int)block].cells[(int)orientation][index][0];
 }
 
 // Returns the Y offset of one of the 4 cells of a piece for a given orientation.
 int blockCellY(Block block, Orientation orientation, int index){
-    return BLOCK_SHAPES[(int)block][(int)orientation][index][1];
+    return BLOCK_DATA[(int)block].cells[(int)orientation][index][1];
 }
 
 // Maps a block type to its display color.
 Color getBlockColor(Block block){
-    return BLOCK_COLORS[(int)block];
+    return BLOCK_DATA[(int)block].color;
 }
 
 // Short block name used in HUD/preview.
 const char *getBlockName(Block block){
-    switch(block){
-        case BarBlock: return "I";
-        case BoxBlock: return "O";
-        case TBlock: return "T";
-        case LBlock: return "L";
-        case JBlock: return "J";
-        case ZBlock: return "Z";
-        case SBlock: return "S";
-    }
-    return "?";
+    return BLOCK_DATA[(int)block].name;
 }
 
 // Chooses a random tetromino type (I/O/T/L/J/Z/S).
@@ -306,7 +314,6 @@ void spawnBlock(GameState &state, ActiveBlock &activeBlock){
     activeBlock.orientation = Piece::chooseRandomOrientation(activeBlock.block);
     activeBlock.x = Piece::findMiddle(activeBlock.block, activeBlock.orientation);
     activeBlock.y = 0;
-    activeBlock.color = Piece::getBlockColor(activeBlock.block);
     // Roll a new queued piece for the following spawn.
     state.nextBlock = Piece::chooseRandomBlock();
 
@@ -422,7 +429,7 @@ void drawLockedCells(const GameState &state){
         for(int col = 0; col < COLS; col++){
             int cellValue = state.cellInfo[row][col];
             if(cellValue != EMPTY_CELL){
-                Color color = BLOCK_COLORS[cellValue - 1];
+                Color color = Piece::getBlockColor((Block)(cellValue - 1));
                 int px = BOARD_ORIGIN_X + col * CELL_WIDTH;
                 int py = BOARD_ORIGIN_Y + row * CELL_HEIGHT;
                 DrawRectangle(px, py, CELL_WIDTH, CELL_HEIGHT, color);
@@ -432,19 +439,19 @@ void drawLockedCells(const GameState &state){
     }
 }
 
-// Draws the currently falling piece using shape offsets from BLOCK_SHAPES.
+// Draws the currently falling piece using shape offsets from BLOCK_DATA.
 void drawActiveBlock(const ActiveBlock &activeBlock){
+    Color color = Piece::getBlockColor(activeBlock.block);
     for(int i = 0; i < 4; i++){
         int boardX = activeBlock.x + Piece::blockCellX(activeBlock.block, activeBlock.orientation, i);
         int boardY = activeBlock.y + Piece::blockCellY(activeBlock.block, activeBlock.orientation, i);
         int px = BOARD_ORIGIN_X + boardX * CELL_WIDTH;
         int py = BOARD_ORIGIN_Y + boardY * CELL_HEIGHT;
-        DrawRectangle(px, py, CELL_WIDTH, CELL_HEIGHT, activeBlock.color);
+        DrawRectangle(px, py, CELL_WIDTH, CELL_HEIGHT, color);
         DrawRectangleLines(px, py, CELL_WIDTH, CELL_HEIGHT, BLOCK_OUTLINE_COLOR);
     }
-
-    // TODO: Draw a ghost piece (landing preview) to improve placement planning.
 }
+
 
 // Draws a compact preview of the queued next piece in the side panel.
 void drawNextBlockPreview(Block block, int originX, int originY){
@@ -456,7 +463,7 @@ void drawNextBlockPreview(Block block, int originX, int originY){
         int px = originX + Piece::blockCellX(block, previewOrientation, i) * previewCell;
         int py = originY + Piece::blockCellY(block, previewOrientation, i) * previewCell;
         DrawRectangle(px, py, previewCell, previewCell, color);
-        DrawRectangleLines(px, py, previewCell, previewCell, Fade(RAYWHITE, 0.25f));
+        DrawRectangleLines(px, py, previewCell, previewCell, BLOCK_OUTLINE_COLOR);
     }
 }
 
@@ -557,8 +564,6 @@ void rotateBlock(const GameState &state, ActiveBlock &activeBlock){
             return;
         }
     }
-
-    // TODO: Replace this basic kick logic with full SRS kick tables for competitive behavior.
 }
 
 } // namespace Movement
