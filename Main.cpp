@@ -21,6 +21,7 @@ const int SCREEN_WIDTH = INFO_ORIGIN_X + INFO_AREA_WIDTH + BOARD_PADDING;
 const int SCREEN_HEIGHT = BOARD_HEIGHT + (BOARD_PADDING * 2);
 
 const int EMPTY_CELL = 0;
+const float DEFAULT_FALL_DELAY = 0.45f;
 const int KICK_TRIES = 6;
 const int WALL_KICKS[KICK_TRIES][2] = {
     {-1, 0}, {1, 0}, {-2, 0}, {2, 0}, {0, -1}, {0, 1}
@@ -36,15 +37,13 @@ const Color PANEL_PRIMARY_TEXT_COLOR = {188, 199, 231, 255};
 const Color PANEL_MUTED_TEXT_COLOR = {141, 153, 189, 255};
 
 struct BlockData {
-    const char *name;
     Color color;
     int cells[4][4][2];
 };
 
-// Single source of truth for each block: name, color, and all rotations.
+// Single source of truth for each block: color and all rotations.
 const BlockData BLOCK_DATA[7] = {
     {
-        "I",
         {0, 194, 255, 255},
         {
             {{1, 0}, {1, 1}, {1, 2}, {1, 3}},
@@ -54,7 +53,6 @@ const BlockData BLOCK_DATA[7] = {
         }
     },
     {
-        "O",
         {255, 205, 64, 255},
         {
             {{1, 0}, {2, 0}, {1, 1}, {2, 1}},
@@ -64,7 +62,6 @@ const BlockData BLOCK_DATA[7] = {
         }
     },
     {
-        "T",
         {188, 124, 255, 255},
         {
             {{1, 0}, {0, 1}, {1, 1}, {2, 1}},
@@ -74,7 +71,6 @@ const BlockData BLOCK_DATA[7] = {
         }
     },
     {
-        "L",
         {255, 156, 77, 255},
         {
             {{2, 0}, {0, 1}, {1, 1}, {2, 1}},
@@ -84,7 +80,6 @@ const BlockData BLOCK_DATA[7] = {
         }
     },
     {
-        "J",
         {86, 128, 255, 255},
         {
             {{0, 0}, {0, 1}, {1, 1}, {2, 1}},
@@ -94,7 +89,6 @@ const BlockData BLOCK_DATA[7] = {
         }
     },
     {
-        "Z",
         {255, 95, 124, 255},
         {
             {{0, 0}, {1, 0}, {1, 1}, {2, 1}},
@@ -104,7 +98,6 @@ const BlockData BLOCK_DATA[7] = {
         }
     },
     {
-        "S",
         {88, 224, 147, 255},
         {
             {{1, 0}, {2, 0}, {0, 1}, {1, 1}},
@@ -129,7 +122,6 @@ struct GameState {
     int cellInfo[ROWS][COLS];
     int score;
     int clearedLinesTotal;
-    int level;
     bool gameOver;
     float fallDelay;
     Block nextBlock;
@@ -144,7 +136,6 @@ namespace Piece {
 int blockCellX(Block block, Orientation orientation, int index);
 int blockCellY(Block block, Orientation orientation, int index);
 Color getBlockColor(Block block);
-const char *getBlockName(Block block);
 Block chooseRandomBlock();
 Orientation chooseRandomOrientation(Block block);
 int findMiddle(Block block, Orientation orientation);
@@ -160,7 +151,6 @@ int clearCompletedLines(GameState &state);
 
 namespace Rules {
 void applyLineClearScore(GameState &state, int linesCleared);
-float getCurrentFallDelay(const GameState &state);
 } // namespace Rules
 
 namespace Rendering {
@@ -239,11 +229,6 @@ Color getBlockColor(Block block){
     return BLOCK_DATA[(int)block].color;
 }
 
-// Short block name used in HUD/preview.
-const char *getBlockName(Block block){
-    return BLOCK_DATA[(int)block].name;
-}
-
 // Chooses a random tetromino type (I/O/T/L/J/Z/S).
 Block chooseRandomBlock(){
     return (Block)GetRandomValue((int)BarBlock, (int)SBlock);
@@ -276,12 +261,11 @@ int findMiddle(Block block, Orientation orientation){
 
 namespace Board {
 
-// Resets score/level/board and spawns the first active piece for a new round.
+// Resets score/board and spawns the first active piece for a new round.
 void resetGame(GameState &state, ActiveBlock &activeBlock){
     initCells(state);
     state.score = 0;
     state.clearedLinesTotal = 0;
-    state.level = 1;
     state.gameOver = false;
     state.fallDelay = 0.0f;
     // Roll a new queued piece for the following spawn.
@@ -375,27 +359,14 @@ int clearCompletedLines(GameState &state){
 
 namespace Rules {
 
-// Applies line-clear scoring and updates total lines + level progression.
+// Awards a flat +100 for each cleared line.
 void applyLineClearScore(GameState &state, int linesCleared){
     if(linesCleared <= 0){
         return;
     }
 
-    const int scoreByClear[5] = {0, 100, 300, 500, 800};
-    int appliedLines = std::min(linesCleared, 4);
-
-    state.score += scoreByClear[appliedLines] * state.level;
+    state.score += linesCleared * 100;
     state.clearedLinesTotal += linesCleared;
-    state.level = 1 + (state.clearedLinesTotal / 10);
-}
-
-// Converts level to gravity delay: higher level -> smaller delay -> faster falling.
-float getCurrentFallDelay(const GameState &state){
-    float delay = 0.60f - 0.05f * (state.level - 1);
-    if(delay < 0.08f){
-        delay = 0.08f;
-    }
-    return delay;
 }
 
 } // namespace Rules
@@ -467,7 +438,7 @@ void drawNextBlockPreview(Block block, int originX, int originY){
     }
 }
 
-// Draws HUD data: score, lines, level, next piece, and control guide.
+// Draws HUD data: score, lines, next piece, and control guide.
 void drawInfoPanel(const GameState &state){
     int infoStartX = INFO_ORIGIN_X;
     int infoStartY = INFO_ORIGIN_Y;
@@ -483,17 +454,16 @@ void drawInfoPanel(const GameState &state){
     DrawText("TETRIS", textX, infoStartY + 20, 45, PANEL_TITLE_COLOR);
     DrawText(TextFormat("Score: %d", state.score), textX, infoStartY + 90, 24, PANEL_PRIMARY_TEXT_COLOR);
     DrawText(TextFormat("Lines: %d", state.clearedLinesTotal), textX, infoStartY + 125, 24, PANEL_PRIMARY_TEXT_COLOR);
-    DrawText(TextFormat("Level: %d", state.level), textX, infoStartY + 160, 24, PANEL_PRIMARY_TEXT_COLOR);
 
     DrawText("Next Piece", textX, infoStartY + 210, 24, PANEL_TITLE_COLOR);
     drawNextBlockPreview(state.nextBlock, textX, infoStartY + 245);
-    DrawText(TextFormat("Type: %s", Piece::getBlockName(state.nextBlock)), textX, infoStartY + 330, 20, PANEL_MUTED_TEXT_COLOR);
 
     DrawText("Controls", textX, infoStartY + 385, 22, PANEL_TITLE_COLOR);
     DrawText("Left/Right: Move", textX, infoStartY + 415, 18, PANEL_MUTED_TEXT_COLOR);
     DrawText("Up: Rotate", textX, infoStartY + 440, 18, PANEL_MUTED_TEXT_COLOR);
     DrawText("Down: Soft drop", textX, infoStartY + 465, 18, PANEL_MUTED_TEXT_COLOR);
     DrawText("Space: Hard drop", textX, infoStartY + 490, 18, PANEL_MUTED_TEXT_COLOR);
+    DrawText("R: Restart", textX, infoStartY + 515, 18, PANEL_MUTED_TEXT_COLOR);
 }
 
 // Draws the game-over overlay above the board area.
@@ -568,7 +538,7 @@ void rotateBlock(const GameState &state, ActiveBlock &activeBlock){
 
 } // namespace Movement
 
-// Finalizes a landed piece: lock -> clear lines -> score/level update -> spawn next.
+// Finalizes a landed piece: lock -> clear lines -> score update -> spawn next.
 void finishActivePiece(GameState &state, ActiveBlock &activeBlock){
     Board::lockActiveBlock(state, activeBlock);
     int linesCleared = Board::clearCompletedLines(state);
@@ -616,7 +586,7 @@ void playGame(GameState &state, ActiveBlock &activeBlock){
     }
 
     // Soft drop temporarily overrides gravity speed while Down is held.
-    float targetFallDelay = IsKeyDown(KEY_DOWN) ? 0.05f : Rules::getCurrentFallDelay(state);
+    float targetFallDelay = IsKeyDown(KEY_DOWN) ? 0.05f : DEFAULT_FALL_DELAY;
     state.fallDelay += GetFrameTime();
 
     if(state.fallDelay >= targetFallDelay){
