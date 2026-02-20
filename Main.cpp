@@ -11,8 +11,14 @@ const int COLS = 10;
 const int CELL_WIDTH = BOARD_WIDTH / COLS;
 const int CELL_HEIGHT = BOARD_HEIGHT / ROWS;
 const int INFO_AREA_WIDTH = 250;
-const int SCREEN_WIDTH = BOARD_WIDTH + INFO_AREA_WIDTH;
-const int SCREEN_HEIGHT = BOARD_HEIGHT;
+const int BOARD_PADDING = 24;
+const int BOARD_GAP = 24;
+const int BOARD_ORIGIN_X = BOARD_PADDING;
+const int BOARD_ORIGIN_Y = BOARD_PADDING;
+const int INFO_ORIGIN_X = BOARD_ORIGIN_X + BOARD_WIDTH + BOARD_GAP;
+const int INFO_ORIGIN_Y = BOARD_ORIGIN_Y;
+const int SCREEN_WIDTH = INFO_ORIGIN_X + INFO_AREA_WIDTH + BOARD_PADDING;
+const int SCREEN_HEIGHT = BOARD_HEIGHT + (BOARD_PADDING * 2);
 
 const int EMPTY_CELL = 0;
 const int KICK_TRIES = 6;
@@ -20,11 +26,24 @@ const int WALL_KICKS[KICK_TRIES][2] = {
     {-1, 0}, {1, 0}, {-2, 0}, {2, 0}, {0, -1}, {0, 1}
 };
 
-const Color WINDOW_BG_COLOR = RAYWHITE;
-const Color GRID_LINE_COLOR = LIGHTGRAY;
+const Color WINDOW_BG_COLOR = {18, 20, 26, 255};
+const Color BOARD_BG_COLOR = {28, 31, 40, 255};
+const Color GRID_LINE_COLOR = {57, 63, 82, 255};
+const Color PANEL_BG_COLOR = {33, 37, 50, 255};
+const Color PANEL_BORDER_COLOR = {73, 81, 107, 255};
+const Color PANEL_TITLE_COLOR = {232, 238, 255, 255};
+const Color PANEL_PRIMARY_TEXT_COLOR = {188, 199, 231, 255};
+const Color PANEL_MUTED_TEXT_COLOR = {141, 153, 189, 255};
 const Color BLOCK_COLORS[7] = {
-    SKYBLUE, GOLD, VIOLET, ORANGE, BLUE, RED, GREEN
+    {0, 194, 255, 255},
+    {255, 205, 64, 255},
+    {188, 124, 255, 255},
+    {255, 156, 77, 255},
+    {86, 128, 255, 255},
+    {255, 95, 124, 255},
+    {88, 224, 147, 255}
 };
+const Color BLOCK_OUTLINE_COLOR = {8, 10, 14, 230};
 
 // Shape data: [block][orientation][cell index][x/y].
 const int BLOCK_SHAPES[7][4][4][2] = {
@@ -157,8 +176,8 @@ int main(){
     while(!WindowShouldClose()){
         BeginDrawing();
             ClearBackground(WINDOW_BG_COLOR);
-            playGame(state, activeBlock);
             Rendering::drawGrid();
+            playGame(state, activeBlock);
             Rendering::drawInfoPanel(state);
             // Overlay is rendered only when the current round is over.
             if(state.gameOver){
@@ -378,13 +397,23 @@ namespace Rendering {
 
 // Draws board guide lines (visual only).
 void drawGrid(){
+    DrawRectangle(BOARD_ORIGIN_X, BOARD_ORIGIN_Y, BOARD_WIDTH, BOARD_HEIGHT, BOARD_BG_COLOR);
+
     for(int row = 0; row <= ROWS; row++){
-        DrawLine(0, row * CELL_HEIGHT, BOARD_WIDTH, row * CELL_HEIGHT, GRID_LINE_COLOR);
+        int y = BOARD_ORIGIN_Y + row * CELL_HEIGHT;
+        DrawLine(BOARD_ORIGIN_X, y, BOARD_ORIGIN_X + BOARD_WIDTH, y, GRID_LINE_COLOR);
     }
 
     for(int col = 0; col <= COLS; col++){
-        DrawLine(col * CELL_WIDTH, 0, col * CELL_WIDTH, BOARD_HEIGHT, GRID_LINE_COLOR);
+        int x = BOARD_ORIGIN_X + col * CELL_WIDTH;
+        DrawLine(x, BOARD_ORIGIN_Y, x, BOARD_ORIGIN_Y + BOARD_HEIGHT, GRID_LINE_COLOR);
     }
+
+    DrawRectangleLinesEx(
+        Rectangle{(float)BOARD_ORIGIN_X, (float)BOARD_ORIGIN_Y, (float)BOARD_WIDTH, (float)BOARD_HEIGHT},
+        2.0f,
+        PANEL_BORDER_COLOR
+    );
 }
 
 // Draws all locked board cells from state.cellInfo.
@@ -394,7 +423,10 @@ void drawLockedCells(const GameState &state){
             int cellValue = state.cellInfo[row][col];
             if(cellValue != EMPTY_CELL){
                 Color color = BLOCK_COLORS[cellValue - 1];
-                DrawRectangle(col * CELL_WIDTH, row * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT, color);
+                int px = BOARD_ORIGIN_X + col * CELL_WIDTH;
+                int py = BOARD_ORIGIN_Y + row * CELL_HEIGHT;
+                DrawRectangle(px, py, CELL_WIDTH, CELL_HEIGHT, color);
+                DrawRectangleLines(px, py, CELL_WIDTH, CELL_HEIGHT, BLOCK_OUTLINE_COLOR);
             }
         }
     }
@@ -405,7 +437,10 @@ void drawActiveBlock(const ActiveBlock &activeBlock){
     for(int i = 0; i < 4; i++){
         int boardX = activeBlock.x + Piece::blockCellX(activeBlock.block, activeBlock.orientation, i);
         int boardY = activeBlock.y + Piece::blockCellY(activeBlock.block, activeBlock.orientation, i);
-        DrawRectangle(boardX * CELL_WIDTH, boardY * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT, activeBlock.color);
+        int px = BOARD_ORIGIN_X + boardX * CELL_WIDTH;
+        int py = BOARD_ORIGIN_Y + boardY * CELL_HEIGHT;
+        DrawRectangle(px, py, CELL_WIDTH, CELL_HEIGHT, activeBlock.color);
+        DrawRectangleLines(px, py, CELL_WIDTH, CELL_HEIGHT, BLOCK_OUTLINE_COLOR);
     }
 
     // TODO: Draw a ghost piece (landing preview) to improve placement planning.
@@ -421,40 +456,46 @@ void drawNextBlockPreview(Block block, int originX, int originY){
         int px = originX + Piece::blockCellX(block, previewOrientation, i) * previewCell;
         int py = originY + Piece::blockCellY(block, previewOrientation, i) * previewCell;
         DrawRectangle(px, py, previewCell, previewCell, color);
-        DrawRectangleLines(px, py, previewCell, previewCell, Fade(BLACK, 0.5f));
+        DrawRectangleLines(px, py, previewCell, previewCell, Fade(RAYWHITE, 0.25f));
     }
 }
 
 // Draws HUD data: score, lines, level, next piece, and control guide.
 void drawInfoPanel(const GameState &state){
-    int infoStartX = BOARD_WIDTH;
+    int infoStartX = INFO_ORIGIN_X;
+    int infoStartY = INFO_ORIGIN_Y;
     int textX = infoStartX + 18;
 
-    DrawRectangle(infoStartX, 0, INFO_AREA_WIDTH, BOARD_HEIGHT, Fade(DARKGRAY, 0.2f));
-    DrawLine(infoStartX, 0, infoStartX, BOARD_HEIGHT, GRAY);
+    DrawRectangle(infoStartX, infoStartY, INFO_AREA_WIDTH, BOARD_HEIGHT, PANEL_BG_COLOR);
+    DrawRectangleLinesEx(
+        Rectangle{(float)infoStartX, (float)infoStartY, (float)INFO_AREA_WIDTH, (float)BOARD_HEIGHT},
+        2.0f,
+        PANEL_BORDER_COLOR
+    );
 
-    DrawText("TETRIS", textX, 20, 45, BLACK);
-    DrawText(TextFormat("Score: %d", state.score), textX, 90, 24, DARKBLUE);
-    DrawText(TextFormat("Lines: %d", state.clearedLinesTotal), textX, 125, 24, DARKBLUE);
-    DrawText(TextFormat("Level: %d", state.level), textX, 160, 24, DARKBLUE);
+    DrawText("TETRIS", textX, infoStartY + 20, 45, PANEL_TITLE_COLOR);
+    DrawText(TextFormat("Score: %d", state.score), textX, infoStartY + 90, 24, PANEL_PRIMARY_TEXT_COLOR);
+    DrawText(TextFormat("Lines: %d", state.clearedLinesTotal), textX, infoStartY + 125, 24, PANEL_PRIMARY_TEXT_COLOR);
+    DrawText(TextFormat("Level: %d", state.level), textX, infoStartY + 160, 24, PANEL_PRIMARY_TEXT_COLOR);
 
-    DrawText("Next Piece", textX, 210, 24, BLACK);
-    drawNextBlockPreview(state.nextBlock, textX, 245);
-    DrawText(TextFormat("Type: %s", Piece::getBlockName(state.nextBlock)), textX, 330, 20, DARKGRAY);
+    DrawText("Next Piece", textX, infoStartY + 210, 24, PANEL_TITLE_COLOR);
+    drawNextBlockPreview(state.nextBlock, textX, infoStartY + 245);
+    DrawText(TextFormat("Type: %s", Piece::getBlockName(state.nextBlock)), textX, infoStartY + 330, 20, PANEL_MUTED_TEXT_COLOR);
 
-    DrawText("Controls", textX, 385, 22, BLACK);
-    DrawText("Left/Right: Move", textX, 415, 18, DARKGRAY);
-    DrawText("Up: Rotate", textX, 440, 18, DARKGRAY);
-    DrawText("Down: Soft drop", textX, 465, 18, DARKGRAY);
-    DrawText("Space: Hard drop", textX, 490, 18, DARKGRAY);
-    DrawText("R: Restart", textX, 515, 18, DARKGRAY);
+    DrawText("Controls", textX, infoStartY + 385, 22, PANEL_TITLE_COLOR);
+    DrawText("Left/Right: Move", textX, infoStartY + 415, 18, PANEL_MUTED_TEXT_COLOR);
+    DrawText("Up: Rotate", textX, infoStartY + 440, 18, PANEL_MUTED_TEXT_COLOR);
+    DrawText("Down: Soft drop", textX, infoStartY + 465, 18, PANEL_MUTED_TEXT_COLOR);
+    DrawText("Space: Hard drop", textX, infoStartY + 490, 18, PANEL_MUTED_TEXT_COLOR);
 }
 
 // Draws the game-over overlay above the board area.
 void drawGameOverOverlay(){
-    DrawRectangle(20, 240, BOARD_WIDTH - 40, 120, Fade(BLACK, 0.7f));
-    DrawText("GAME OVER", 48, 263, 36, RAYWHITE);
-    DrawText("Press R to restart", 68, 312, 20, RAYWHITE);
+    int overlayX = BOARD_ORIGIN_X + 20;
+    int overlayY = BOARD_ORIGIN_Y + 240;
+    DrawRectangle(overlayX, overlayY, BOARD_WIDTH - 40, 120, Fade(BLACK, 0.7f));
+    DrawText("GAME OVER", overlayX + 28, overlayY + 23, 36, RAYWHITE);
+    DrawText("Press R to restart", overlayX + 48, overlayY + 72, 20, RAYWHITE);
 }
 
 } // namespace Rendering
@@ -583,3 +624,4 @@ void playGame(GameState &state, ActiveBlock &activeBlock){
         state.fallDelay = 0.0f;
     }
 }
+
