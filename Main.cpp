@@ -29,22 +29,22 @@ const int WALL_KICKS[KICK_TRIES][2] = {
     {-1, 0}, {1, 0}, {-2, 0}, {2, 0}, {0, -1}, {0, 1}
 };
 
-const Color WINDOW_BG_COLOR = {18, 20, 26, 255};          // Deep Charcoal.
-const Color BOARD_BG_COLOR = {28, 31, 40, 255};           // Gunmetal.
-const Color GRID_LINE_COLOR = {57, 63, 82, 255};          // Slate Gray.
-const Color PANEL_BG_COLOR = {33, 37, 50, 255};           // Charcoal Blue.
-const Color PANEL_BORDER_COLOR = {73, 81, 107, 255};      // Steel Blue Gray.
-const Color PANEL_TITLE_COLOR = {232, 238, 255, 255};     // Alice Blue.
-const Color PANEL_PRIMARY_TEXT_COLOR = {188, 199, 231, 255}; // Light Steel Blue.
-const Color PANEL_MUTED_TEXT_COLOR = {141, 153, 189, 255};   // Cadet Gray.
-const Color BLOCK_OUTLINE_COLOR = {8, 10, 14, 230};       // Rich Black (alpha 230).
+const Color WINDOW_BG_COLOR = {18, 20, 26, 255};
+const Color BOARD_BG_COLOR = {28, 31, 40, 255};
+const Color GRID_LINE_COLOR = {57, 63, 82, 255};
+const Color PANEL_BG_COLOR = {33, 37, 50, 255};
+const Color PANEL_BORDER_COLOR = {73, 81, 107, 255};
+const Color PANEL_TITLE_COLOR = {232, 238, 255, 255};
+const Color PANEL_PRIMARY_TEXT_COLOR = {188, 199, 231, 255};
+const Color PANEL_MUTED_TEXT_COLOR = {141, 153, 189, 255};
+const Color BLOCK_OUTLINE_COLOR = {8, 10, 14, 230};
 
 struct BlockData {
     Color color;
     int cells[4][4][2];
 };
 
-// Single source of truth for each block: color and all rotations.
+// Data for each block (color and all rotations).
 const BlockData BLOCK_DATA[7] = {
     {
         {0, 194, 255, 255}, // BarBlock color (cyan).
@@ -111,7 +111,7 @@ const BlockData BLOCK_DATA[7] = {
     }
 };
 
-// Represents the currently falling tetromino.
+// The currently falling block.
 struct ActiveBlock {
     Block block;
     Orientation orientation;
@@ -119,7 +119,7 @@ struct ActiveBlock {
     int y;
 };
 
-// Holds persistent gameplay state shared across frames.
+// Gameplay state for rounds.
 struct GameState {
     int cellInfo[ROWS][COLS];
     int score;
@@ -131,11 +131,11 @@ struct GameState {
 
 void init();
 
-namespace PieceData {
+namespace BlockInfo {
 int blockCellX(Block block, Orientation orientation, int index);
 int blockCellY(Block block, Orientation orientation, int index);
 Color getBlockColor(Block block);
-} // namespace PieceData
+} // namespace BlockInfo
 
 namespace Spawner {
 Block chooseRandomBlock();
@@ -164,7 +164,7 @@ void applyLineClearScore(GameState &state, int linesCleared);
 
 namespace Round {
 void resetGame(GameState &state, ActiveBlock &activeBlock);
-void finishActivePiece(GameState &state, ActiveBlock &activeBlock);
+void finishActiveBlock(GameState &state, ActiveBlock &activeBlock);
 void playGame(GameState &state, ActiveBlock &activeBlock);
 } // namespace Round
 
@@ -186,17 +186,18 @@ int main(){
 
     GameState state;
     ActiveBlock activeBlock;
-    // Initialize gameplay state before entering the frame loop.
+
+    // Init gameplay
     Round::resetGame(state, activeBlock);
 
-    // Main frame loop: update + draw once per iteration.
+    // Main loop
     while(!WindowShouldClose()){
         BeginDrawing();
             ClearBackground(WINDOW_BG_COLOR);
             Rendering::drawGrid();
             Round::playGame(state, activeBlock);
             Rendering::drawInfoPanel(state);
-            // Overlay is rendered only when the current round is over.
+
             if(state.gameOver){
                 Rendering::drawGameOverOverlay();
             }
@@ -208,13 +209,13 @@ int main(){
 }
 
 void init(){
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "TETRIS");
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "RAYTETRIS");
     SetTargetFPS(60);
 }
 
 namespace Grid {
 
-// Clears the board so every cell is EMPTY_CELL.
+// Clears the board
 void initCells(GameState &state){
     for(int row = 0; row < ROWS; row++){
         for(int col = 0; col < COLS; col++){
@@ -224,33 +225,30 @@ void initCells(GameState &state){
 }
 
 } // namespace Grid
-namespace PieceData {
+namespace BlockInfo {
 
-// Returns the X offset of one of the 4 cells of a piece for a given orientation.
+// Returns the X offset of one of the 4 cells of a Block for a given orientation.
 int blockCellX(Block block, Orientation orientation, int index){
     return BLOCK_DATA[(int)block].cells[(int)orientation][index][0];
 }
 
-// Returns the Y offset of one of the 4 cells of a piece for a given orientation.
+// Returns the Y offset of one of the 4 cells of a Block for a given orientation.
 int blockCellY(Block block, Orientation orientation, int index){
     return BLOCK_DATA[(int)block].cells[(int)orientation][index][1];
 }
 
-// Maps a block type to its display color.
 Color getBlockColor(Block block){
     return BLOCK_DATA[(int)block].color;
 }
 
-} // namespace PieceData
+} // namespace BlockInfo
 
 namespace Spawner {
 
-// Chooses a random tetromino type (I/O/T/L/J/Z/S).
 Block chooseRandomBlock(){
     return (Block)GetRandomValue((int)BarBlock, (int)SBlock);
 }
 
-// Chooses a random starting orientation (O is fixed because all rotations are identical).
 Orientation chooseRandomOrientation(Block block){
     if(block == BoxBlock){
         return Up;
@@ -258,13 +256,12 @@ Orientation chooseRandomOrientation(Block block){
     return (Orientation)GetRandomValue((int)Up, (int)Left);
 }
 
-// Computes spawn X so the piece appears centered based on its current rotated width.
 int findMiddle(Block block, Orientation orientation){
     int minX = COLS;
     int maxX = 0;
 
     for(int i = 0; i < 4; i++){
-        int cellX = PieceData::blockCellX(block, orientation, i);
+        int cellX = BlockInfo::blockCellX(block, orientation, i);
         minX = min(minX, cellX);
         maxX = max(maxX, cellX);
     }
@@ -276,14 +273,13 @@ int findMiddle(Block block, Orientation orientation){
 } // namespace Spawner
 namespace Round {
 
-// Resets score/board and spawns the first active piece for a new round.
 void resetGame(GameState &state, ActiveBlock &activeBlock){
     Grid::initCells(state);
     state.score = 0;
     state.clearedLinesTotal = 0;
     state.gameOver = false;
     state.fallDelay = 0.0f;
-    // Roll a new queued piece for the following spawn.
+    // Roll a new queued Block for the following spawn.
     state.nextBlock = Spawner::chooseRandomBlock();
     Spawner::spawnBlock(state, activeBlock);
 }
@@ -292,11 +288,11 @@ void resetGame(GameState &state, ActiveBlock &activeBlock){
 
 namespace Collision {
 
-// Core collision function: validates bounds and overlap for all 4 cells.
+// validate bounds and overlap for all 4 cells.
 bool canPlace(const GameState &state, Block block, Orientation orientation, int x, int y){
     for(int i = 0; i < 4; i++){
-        int boardX = x + PieceData::blockCellX(block, orientation, i);
-        int boardY = y + PieceData::blockCellY(block, orientation, i);
+        int boardX = x + BlockInfo::blockCellX(block, orientation, i);
+        int boardY = y + BlockInfo::blockCellY(block, orientation, i);
 
         if(boardX < 0 || boardX >= COLS || boardY < 0 || boardY >= ROWS){
             return false;
@@ -314,14 +310,12 @@ bool canPlace(const GameState &state, Block block, Orientation orientation, int 
 
 namespace Spawner {
 
-// Promotes nextBlock into active play, then rolls a new nextBlock.
-// Also checks spawn collision to detect game-over immediately.
 void spawnBlock(GameState &state, ActiveBlock &activeBlock){
     activeBlock.block = state.nextBlock;
     activeBlock.orientation = chooseRandomOrientation(activeBlock.block);
     activeBlock.x = findMiddle(activeBlock.block, activeBlock.orientation);
     activeBlock.y = 0;
-    // Roll a new queued piece for the following spawn.
+    // Roll a new queued Block for the following spawn.
     state.nextBlock = chooseRandomBlock();
 
     // If spawn location is blocked, no legal spawn exists -> game over.
@@ -334,13 +328,13 @@ void spawnBlock(GameState &state, ActiveBlock &activeBlock){
 
 namespace Grid {
 
-// Writes active piece cells into the board grid as locked blocks.
+// Writes active Block cells into the board grid as locked blocks.
 void lockActiveBlock(GameState &state, const ActiveBlock &activeBlock){
     int blockValue = (int)activeBlock.block + 1;
 
     for(int i = 0; i < 4; i++){
-        int boardX = activeBlock.x + PieceData::blockCellX(activeBlock.block, activeBlock.orientation, i);
-        int boardY = activeBlock.y + PieceData::blockCellY(activeBlock.block, activeBlock.orientation, i);
+        int boardX = activeBlock.x + BlockInfo::blockCellX(activeBlock.block, activeBlock.orientation, i);
+        int boardY = activeBlock.y + BlockInfo::blockCellY(activeBlock.block, activeBlock.orientation, i);
         state.cellInfo[boardY][boardX] = blockValue;
     }
 }
@@ -385,7 +379,6 @@ int clearCompletedLines(GameState &state){
 } // namespace Grid
 namespace Scoring {
 
-// Awards a flat +100 for each cleared line.
 void applyLineClearScore(GameState &state, int linesCleared){
     if(linesCleared <= 0){
         return;
@@ -399,7 +392,6 @@ void applyLineClearScore(GameState &state, int linesCleared){
 
 namespace Rendering {
 
-// Draws board guide lines (visual only).
 void drawGrid(){
     DrawRectangle(BOARD_ORIGIN_X, BOARD_ORIGIN_Y, BOARD_WIDTH, BOARD_HEIGHT, BOARD_BG_COLOR);
 
@@ -426,7 +418,7 @@ void drawLockedCells(const GameState &state){
         for(int col = 0; col < COLS; col++){
             int cellValue = state.cellInfo[row][col];
             if(cellValue != EMPTY_CELL){
-                Color color = PieceData::getBlockColor((Block)(cellValue - 1));
+                Color color = BlockInfo::getBlockColor((Block)(cellValue - 1));
                 int px = BOARD_ORIGIN_X + col * CELL_WIDTH;
                 int py = BOARD_ORIGIN_Y + row * CELL_HEIGHT;
                 DrawRectangle(px, py, CELL_WIDTH, CELL_HEIGHT, color);
@@ -436,12 +428,12 @@ void drawLockedCells(const GameState &state){
     }
 }
 
-// Draws the currently falling piece using shape offsets from BLOCK_DATA.
+// Draws the currently falling Block using shape offsets from BLOCK_DATA.
 void drawActiveBlock(const ActiveBlock &activeBlock){
-    Color color = PieceData::getBlockColor(activeBlock.block);
+    Color color = BlockInfo::getBlockColor(activeBlock.block);
     for(int i = 0; i < 4; i++){
-        int boardX = activeBlock.x + PieceData::blockCellX(activeBlock.block, activeBlock.orientation, i);
-        int boardY = activeBlock.y + PieceData::blockCellY(activeBlock.block, activeBlock.orientation, i);
+        int boardX = activeBlock.x + BlockInfo::blockCellX(activeBlock.block, activeBlock.orientation, i);
+        int boardY = activeBlock.y + BlockInfo::blockCellY(activeBlock.block, activeBlock.orientation, i);
         int px = BOARD_ORIGIN_X + boardX * CELL_WIDTH;
         int py = BOARD_ORIGIN_Y + boardY * CELL_HEIGHT;
         DrawRectangle(px, py, CELL_WIDTH, CELL_HEIGHT, color);
@@ -450,21 +442,20 @@ void drawActiveBlock(const ActiveBlock &activeBlock){
 }
 
 
-// Draws a compact preview of the queued next piece in the side panel.
+// Draws preview of the queued next Block in the side panel.
 void drawNextBlockPreview(Block block, int originX, int originY){
     const int previewCell = 18;
     Orientation previewOrientation = (block == BarBlock) ? Right : Up;
-    Color color = PieceData::getBlockColor(block);
+    Color color = BlockInfo::getBlockColor(block);
 
     for(int i = 0; i < 4; i++){
-        int px = originX + PieceData::blockCellX(block, previewOrientation, i) * previewCell;
-        int py = originY + PieceData::blockCellY(block, previewOrientation, i) * previewCell;
+        int px = originX + BlockInfo::blockCellX(block, previewOrientation, i) * previewCell;
+        int py = originY + BlockInfo::blockCellY(block, previewOrientation, i) * previewCell;
         DrawRectangle(px, py, previewCell, previewCell, color);
         DrawRectangleLines(px, py, previewCell, previewCell, BLOCK_OUTLINE_COLOR);
     }
 }
 
-// Draws info panel: score, lines, next piece, and control guide.
 void drawInfoPanel(const GameState &state){
     int infoStartX = INFO_ORIGIN_X;
     int infoStartY = INFO_ORIGIN_Y;
@@ -481,7 +472,7 @@ void drawInfoPanel(const GameState &state){
     DrawText(TextFormat("Score: %d", state.score), textX, infoStartY + 90, 24, PANEL_PRIMARY_TEXT_COLOR);
     DrawText(TextFormat("Lines: %d", state.clearedLinesTotal), textX, infoStartY + 125, 24, PANEL_PRIMARY_TEXT_COLOR);
 
-    DrawText("Next Piece", textX, infoStartY + 210, 24, PANEL_TITLE_COLOR);
+    DrawText("Next Block", textX, infoStartY + 210, 24, PANEL_TITLE_COLOR);
     drawNextBlockPreview(state.nextBlock, textX, infoStartY + 245);
 
     DrawText("Controls", textX, infoStartY + 385, 22, PANEL_TITLE_COLOR);
@@ -492,7 +483,6 @@ void drawInfoPanel(const GameState &state){
     DrawText("R: Restart", textX, infoStartY + 515, 18, PANEL_MUTED_TEXT_COLOR);
 }
 
-// Draws the game-over overlay above the board area.
 void drawGameOverOverlay(){
     int overlayX = BOARD_ORIGIN_X + 20;
     int overlayY = BOARD_ORIGIN_Y + 240;
@@ -505,17 +495,14 @@ void drawGameOverOverlay(){
 
 namespace Collision {
 
-// Checks if the active piece can move one row down.
 bool canBlockGoDown(const GameState &state, const ActiveBlock &activeBlock){
     return canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x, activeBlock.y + 1);
 }
 
-// Checks if the active piece can move one column left.
 bool canBlockGoLeft(const GameState &state, const ActiveBlock &activeBlock){
     return canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x - 1, activeBlock.y);
 }
 
-// Checks if the active piece can move one column right.
 bool canBlockGoRight(const GameState &state, const ActiveBlock &activeBlock){
     return canPlace(state, activeBlock.block, activeBlock.orientation, activeBlock.x + 1, activeBlock.y);
 }
@@ -569,15 +556,15 @@ void rotateBlock(const GameState &state, ActiveBlock &activeBlock){
 } // namespace Movement
 namespace Round {
 
-// Finalizes a landed piece: lock -> clear lines -> score update -> spawn next.
-void finishActivePiece(GameState &state, ActiveBlock &activeBlock){
+// lock,clear lines,score update,spawn next.
+void finishActiveBlock(GameState &state, ActiveBlock &activeBlock){
     Grid::lockActiveBlock(state, activeBlock);
     int linesCleared = Grid::clearCompletedLines(state);
     Scoring::applyLineClearScore(state, linesCleared);
     Spawner::spawnBlock(state, activeBlock);
 }
 
-// Per-frame gameplay flow: draw, read input, apply gravity, and resolve piece state.
+// draw, read input, gravity, and resolve Block state.
 void playGame(GameState &state, ActiveBlock &activeBlock){
     Rendering::drawLockedCells(state);
 
@@ -588,7 +575,6 @@ void playGame(GameState &state, ActiveBlock &activeBlock){
     // In game-over state, only restart input is handled.
     if(state.gameOver){
         if(IsKeyPressed(KEY_R)){
-            // Restart immediately into a fresh round.
             resetGame(state, activeBlock);
         }
         return;
@@ -606,12 +592,12 @@ void playGame(GameState &state, ActiveBlock &activeBlock){
         Movement::rotateBlock(state, activeBlock);
     }
 
-    // Hard drop: move down until blocked, then immediately finalize piece.
+    // Hard drop: move down until blocked, then immediately finalize Block.
     if(IsKeyPressed(KEY_SPACE)){
         while(Collision::canBlockGoDown(state, activeBlock)){
             activeBlock.y++;
         }
-        finishActivePiece(state, activeBlock);
+        finishActiveBlock(state, activeBlock);
         state.fallDelay = 0.0f;
         return;
     }
@@ -625,14 +611,13 @@ void playGame(GameState &state, ActiveBlock &activeBlock){
             activeBlock.y++;
         }
         else{
-            finishActivePiece(state, activeBlock);
+            finishActiveBlock(state, activeBlock);
         }
         state.fallDelay = 0.0f;
     }
 
     // Restart immediately into a fresh round if R is pressed.
     if(IsKeyPressed(KEY_R)){
-        // Restart immediately into a fresh round.
         resetGame(state, activeBlock);
     }
     
